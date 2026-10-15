@@ -1,0 +1,241 @@
+# Hand-labelled reference values for the case dossier (synthetic sample).
+#
+# Purpose: (1) measure extraction accuracy of any model, field by field;
+#          (2) replay offline, so the pipeline can be developed and tested without a model.
+# Labelled from the documents by AI, to be spot-checked by a person before relying on it.
+# Documents are matched by sha256 (content), not by file name.
+# Format per value: raw (as printed), optional value (normalised; defaults to raw),
+# optional quote (verbatim; defaults to raw), optional page. Absent field = not in document.
+
+labelled_by: AI from the documents
+spot_checked_by: null
+
+documents:
+
+  "application_form.pdf":
+    sha256: e077a1deb59a8b09b8d1df23477b0f3c84acc6394c5e51ced5033e85cd0329d0
+    doc_type: application_form
+    fields:
+      applicant.first_name: {raw: Rosa, quote: "Voornaam Rosa"}
+      applicant.last_name: {raw: Huybrechts, quote: "Naam Huybrechts"}
+      applicant.rrn: {raw: "75030163261", quote: "Rijksregisternummer klant 75030163261"}
+      applicant.domicile_address: {raw: "Antoniusring 31, 2000 Antwerpen", quote: "Uitvoeringsadres Straat Antoniusring Huisnummer 31"}
+      applicant.employment_type: {raw: "Beroepsmatig (loondienst)", value: salaried, quote: "Type Beroepsmatig (loondienst)"}
+      household.member_count: {raw: "Gezinsleden nr. 1", value: "1", quote: "Gezinsleden Gezinsleden nr. 1"}
+      credit.purpose: {raw: "Gascondensatieketel, Buitenmuur", value: renovation, quote: "Ik wil een lening aanvragen voor: Gascondensatieketel Buitenmuur"}
+      credit.amount: {raw: "44789", quote: "Kredietbedrag: 44789"}
+      credit.term_years: {raw: "20", quote: "Gewenste looptijd, in jaren, van de lening? 20"}
+      credit.repayment_iban: {raw: "54886720580334", quote: "domiciliëring (IBAN) 54886720580334"}
+      income.declared_professional_monthly: {raw: "2236", quote: "Maandelijks bedrag 2236"}
+      income.declared_items:
+        - type: {raw: "Beroepsmatig (loondienst)", value: professional, quote: "Type Beroepsmatig (loondienst)"}
+          label: {raw: "Beroepsmatig (loondienst)", quote: "Type Beroepsmatig (loondienst)"}
+          monthly_amount: {raw: "2236", quote: "Maandelijks bedrag 2236"}
+        - type: {raw: "Andere", value: child_benefit, quote: "Omschrijving ander inkomen Groeipakket"}
+          label: {raw: "Andere Groeipakket", quote: "Type Andere Omschrijving ander inkomen Groeipakket"}
+          monthly_amount: {raw: "343", quote: "Maandelijks bedrag 343"}
+      liabilities.declared:
+        - type: {raw: Hypothecair krediet, quote: "Krediet / lening nr. 1 Type Hypothecair krediet"}
+          principal: {raw: "169171", quote: "Afgesloten kredietbedrag 169171"}
+          outstanding_balance: {raw: "84102", quote: "Openstaand saldo 84102"}
+          monthly_payment: {raw: "704.88", quote: "Maandelijks af te lossen bedrag 704.88"}
+          end_date: {raw: "2046-08-25", quote: "Datum laatste termijn 2046-08-25"}
+        - type: {raw: Hypothecair krediet, quote: "Krediet / lening nr. 2 Type Hypothecair krediet"}
+          principal: {raw: "100272", quote: "Afgesloten kredietbedrag 100272"}
+          outstanding_balance: {raw: "63555", quote: "Openstaand saldo 63555"}
+          monthly_payment: {raw: "557.07", quote: "Maandelijks af te lossen bedrag 557.07"}
+          end_date: {raw: "2041-08-26", quote: "Datum laatste termijn 2041-08-26"}
+        - type: {raw: Hypothecair krediet, quote: "Krediet / lening nr. 3 Type Hypothecair krediet"}
+          principal: {raw: "222208", quote: "Afgesloten kredietbedrag 222208"}
+          outstanding_balance: {raw: "221484", quote: "Openstaand saldo 221484"}
+          monthly_payment: {raw: "1851.73", quote: "Maandelijks af te lossen bedrag 1851.73"}
+          end_date: {raw: "2036-08-27", quote: "Datum laatste termijn 2036-08-27"}
+      own_funds.declared: {raw: "1000", quote: "Eigen inbreng 1000"}
+      renovation.works:
+        - label: {raw: Gascondensatieketel, quote: "Ik wil een lening aanvragen voor: Gascondensatieketel"}
+          category: {raw: Gascondensatieketel, value: heating, quote: "Ik wil een lening aanvragen voor: Gascondensatieketel"}
+        - label: {raw: Buitenmuur, quote: "Gascondensatieketel Buitenmuur"}
+          category: {raw: Buitenmuur, value: insulation, quote: "Gascondensatieketel Buitenmuur"}
+      renovation.total_investment: {raw: "45788.05", quote: "Totaal bedrag aan geplande investeringen: 45788.05"}
+      property.address: {raw: "Antoniusring 31, 2000 Antwerpen", quote: "Uitvoeringsadres Straat Antoniusring Huisnummer 31"}
+      property.declared_owner: {raw: "true", quote: "Ik ben eigenaar true"}
+      property.acquisition_date: {raw: "2013-01-11", quote: "De akte van de woning is verleden op: 2013-01-11"}
+
+  "authoritative_data.pdf":
+    sha256: 5ad35d4fc4c906ed2187693100ed23bb3ce4ae58bc43ba4d18bfc5b9ffe76152
+    doc_type: authentic_data
+    fields:
+      applicant.first_name: {raw: Rosa, quote: "Voornaam Rosa"}
+      applicant.last_name: {raw: Huybrechts, quote: "Achternaam Huybrechts"}
+      applicant.rrn: {raw: "75030163261", quote: "Rijksregisternummer 75030163261"}
+      applicant.birth_date: {raw: "1975-03-01", quote: "Geboortedatum 1975-03-01"}
+      applicant.civil_status: {raw: "Weduwe/Weduwnaar", value: widowed, quote: "Burgerlijke staat Weduwe/Weduwnaar"}
+      applicant.domicile_address: {raw: "Antoniusring 31, 2000 Antwerpen", quote: "Domicilie-adres Straat Antoniusring Huisnummer 31"}
+      tax.income_year: {raw: "2024", quote: "Inkomensjaar 2024"}
+      tax.aggregate_taxable_income: {raw: "34809.52", quote: "Gezamenlijk belastbaar inkomen 34809.52"}
+      property.address: {raw: "Antoniusring 31, 2000 Antwerpen", quote: "3 - Adressen Uitvoeringsadres Straat Antoniusring Huisnummer 31"}
+      property.construction_year: {raw: "van 1919 tot 1945", value: "1919-1945", quote: "Omschrijving bouwjaar van 1919 tot 1945"}
+      epc.certificate_id: {raw: "11002-G-2024/0419/EP21304/A017/D02/SD001", quote: "EPB attestnumer 11002-G-2024/0419/EP21304/A017/D02/SD001"}
+      epc.issue_date: {raw: "2024-05-13", quote: "EPB datum ingediend 2024-05-13"}
+
+  credit_registry.pdf:
+    sha256: fe3c9765d4116f6e31e3069d44f090b71e3826a6b5f99b2e57e45ff3518eae36
+    doc_type: becris_extract
+    fields:
+      applicant.first_name: {raw: Rosa, quote: "Voornaam Rosa"}
+      applicant.last_name: {raw: Huybrechts, quote: "Naam Huybrechts"}
+      applicant.rrn: {raw: "75030163261", quote: "Identificatiecode 75030163261"}
+      applicant.birth_date: {raw: "1/3/1975", quote: "Geboortedatum 1/3/1975"}
+      becris.consultation_date: {raw: "30/8/2026", quote: "Datum: 30/8/2026"}
+      becris.arrear_indicator: {raw: "0", value: "false", quote: "Indicator wanbetaling 0"}
+      becris.credits:
+        - category: {raw: Hypothecair krediet, quote: "Categorie instrument Hypothecair krediet Toegezegd leningenbedrag 169.171", page: 1}
+          contract_amount: {raw: "169.171", quote: "Toegezegd leningenbedrag 169.171", page: 1}
+          instalment: {raw: "704,88", quote: "Termijnbedrag 704,88", page: 1}
+          total_repayable: {raw: "169.171,20", quote: "Totaal terug te betalen bedrag 169.171,20", page: 1}
+          instalment_count: {raw: "240", quote: "Aantal betalingstermijnen 240", page: 1}
+          start_date: {raw: "2026-08-25", quote: "Aanvangsdatum (van het contract) 2026-08-25", page: 1}
+          first_instalment_date: {raw: "2026-09-25", quote: "Datum van de eerste betalingstermijn 2026-09-25", page: 1}
+          end_date: {raw: "2046-08-25", quote: "Wettelijke eindvervaldatum 2046-08-25", page: 1}
+          arrear_status: {raw: Geen wanbetaling, quote: "Wanbetalingsstatus van het instrument Geen wanbetaling", page: 1}
+        - category: {raw: Hypothecair krediet, quote: "Categorie instrument Hypothecair krediet Toegezegd leningenbedrag 100.272", page: 2}
+          contract_amount: {raw: "100.272", quote: "Toegezegd leningenbedrag 100.272", page: 2}
+          instalment: {raw: "557,07", quote: "Termijnbedrag 557,07", page: 2}
+          total_repayable: {raw: "100.272,60", quote: "Totaal terug te betalen bedrag 100.272,60", page: 2}
+          instalment_count: {raw: "180", quote: "Aantal betalingstermijnen 180", page: 2}
+          start_date: {raw: "2026-08-26", quote: "Aanvangsdatum (van het contract) 2026-08-26", page: 2}
+          first_instalment_date: {raw: "2026-10-26", quote: "Datum van de eerste betalingstermijn 2026-10-26", page: 2}
+          end_date: {raw: "2041-08-26", quote: "Wettelijke eindvervaldatum 2041-08-26", page: 2}
+          arrear_status: {raw: Geen wanbetaling, quote: "Wanbetalingsstatus van het instrument Geen wanbetaling", page: 2}
+        - category: {raw: Hypothecair krediet, quote: "Categorie instrument Hypothecair krediet Toegezegd leningenbedrag 222.208", page: 2}
+          contract_amount: {raw: "222.208", quote: "Toegezegd leningenbedrag 222.208", page: 2}
+          instalment: {raw: "1.851,73", quote: "Termijnbedrag 1.851,73", page: 2}
+          total_repayable: {raw: "222.207,60", quote: "Totaal terug te betalen bedrag 222.207,60", page: 2}
+          instalment_count: {raw: "120", quote: "Aantal betalingstermijnen 120", page: 2}
+          start_date: {raw: "2026-08-27", quote: "Aanvangsdatum (van het contract) 2026-08-27", page: 2}
+          first_instalment_date: {raw: "2026-09-27", quote: "Datum van de eerste betalingstermijn 2026-09-27", page: 2}
+          end_date: {raw: "2036-08-27", quote: "Wettelijke eindvervaldatum 2036-08-27", page: 2}
+          arrear_status: {raw: Geen wanbetaling, quote: "Wanbetalingsstatus van het instrument Geen wanbetaling", page: 3}
+
+  identity_document.pdf:
+    sha256: 17afd72c76a1d4c12bf9d6a6432b4d19da92540024cb9f6f0e0bb2925d35385d
+    doc_type: identity_eid
+    fields:
+      applicant.first_name: {raw: Rosa, quote: "PRÉNOMS / VOORNAMEN Rosa"}
+      applicant.last_name: {raw: Huybrechts, quote: "NOM / NAAM Huybrechts"}
+      applicant.rrn: {raw: "75.03.01-632.61", quote: "N° REG. NAT. / RIJKSREGISTERNR. 75.03.01-632.61"}
+      applicant.birth_date: {raw: "01/03/1975", quote: "01/03/1975"}
+      applicant.sex: {raw: "V", value: F, quote: "SEXE / GESLACHT V"}
+      identity.document_number: {raw: "591-3350084-00", quote: "N° CARTE / KAARTNR. 591-3350084-00"}
+      identity.valid_until: {raw: "10/02/2035", quote: "AU / TOT 10/02/2035"}
+      identity.mrz:
+        raw: "IDBEL5913350086400<<<<<<<<<<<<\n7503016F3502103BEL<<<<<<<<<<<0\nHUYBRECHTS<<ROSA<<<<<<<<<<<<<<"
+        quote: "IDBEL5913350086400<<<<<<<<<<<< 7503016F3502103BEL<<<<<<<<<<<0 HUYBRECHTS<<ROSA<<<<<<<<<<<<<<"
+        page: 2
+
+  conformity.pdf:
+    sha256: c8b37f9b44a3d1682ca06cda6e146d0fcc034fc92ae224baabb8f98025a3b6a1
+    doc_type: works_conformity
+    fields:
+      renovation.total_investment: {raw: "52.600", quote: "TOTAAL 24.500 28.100 52.600 46.700"}
+      renovation.approved_amount: {raw: "46.700", quote: "TOTAAL 24.500 28.100 52.600 46.700"}
+
+  epc_certificate.pdf:
+    sha256: e3b8139aa207d1373566374515cb83b95d5aab0cc273202905993ddde54087ee
+    doc_type: epc_certificate
+    fields:
+      property.address: {raw: "Antoniusring 31, 2000 Antwerpen", quote: "Residentiële eenheid Antoniusring 31, 2000 Antwerpen", page: 1}
+      property.construction_year: {raw: "1922", quote: "Bouwjaar 1922"}
+      property.floor_area_m2: {raw: "198", quote: "Bruto vloeroppervlakte (m²) 198"}
+      epc.certificate_id: {raw: "11002-G-2024/0419/EP21304/A017/D02/SD001", quote: "identificatiecode: 11002-G-2024/0419/EP21304/A017/D02/SD001"}
+      epc.issue_date: {raw: "13/05/2024", quote: "Datum: 13/05/2024"}
+      epc.valid_until: {raw: "13 mei 2034", quote: "Dit certificaat is geldig tot en met 13 mei 2034."}
+      epc.energy_score: {raw: "364", quote: "364 kWh / (m² jaar)"}
+      epc.permit_application_date: {raw: "14/10/1950", quote: "Datum aanvraag vergunning 14/10/1950"}
+      epc.works_end_date: {raw: "26/06/1924", quote: "Datum einde van de werken 26/06/1924"}
+
+  purchase_agreement.pdf:
+    sha256: f6de82d9b92fcfce79b2dc8aa512ed2420f118f2e70a401cce3af9430a1c2c44
+    doc_type: notarial_deed
+    fields:
+      applicant.first_name: {raw: Rosa, quote: "Naam koper: Rosa Huybrechts"}
+      applicant.last_name: {raw: Huybrechts, quote: "Naam koper: Rosa Huybrechts"}
+      applicant.rrn: {raw: "75.03.01-632.61", quote: "Rijksregisternummer: 75.03.01-632.61"}
+      property.address: {raw: "Antoniusring 31, 2000 Antwerpen", quote: "Adres Antoniusring 31, 2000 Antwerpen"}
+      property.country: {raw: BE, quote: "Land BE"}
+      property.cadastral_location: {raw: "Afdeling 2, Sectie H", quote: "Kadastrale ligging Afdeling 2, Sectie H"}
+      property.cadastral_parcel: {raw: "3749", quote: "Perceelnummer 3749"}
+      property.floor_area_m2: {raw: "198,30 m²", quote: "Bewoonbare oppervlakte 198,30 m²"}
+      property.owner_rrn: {raw: "75.03.01-632.61", quote: "Rijksregisternummer: 75.03.01-632.61"}
+      property.acquisition_date: {raw: "11/01/2013", quote: "Datum akte: 11/01/2013"}
+      property.purchase_price: {raw: "324.548,45 EUR", quote: "Aankoopprijs 324.548,45 EUR"}
+
+  payslip_may2026.pdf:
+    sha256: 3c6e3797b79a1afa2e53247a638226991bc063f6c52a6d274b3b08369a3b3827
+    doc_type: payslip
+    fields: &payslip_person
+      applicant.first_name: {raw: Rosa, quote: "Rosa Huybrechts", page: 1}
+      applicant.last_name: {raw: Huybrechts, quote: "Rosa Huybrechts", page: 1}
+      applicant.rrn: {raw: "75.03.01-632.61", quote: "Rijksregisternummer 75.03.01-632.61", page: 1}
+      applicant.birth_date: {raw: "01/03/1975", quote: "Geboortedatum 01/03/1975", page: 1}
+      applicant.sex: {raw: F, quote: "Geslacht F", page: 1}
+      applicant.civil_status: {raw: Cohabitant, value: cohabiting, quote: "Burgerlijke staat Cohabitant", page: 1}
+      applicant.domicile_address: {raw: "Larssingel, 41, 1800, Vilvoorde", value: "Larssingel 41, 1800 Vilvoorde", quote: "Rosa Huybrechts Larssingel, 41, 1800, Vilvoorde", page: 1}
+      applicant.employment_type: {raw: Ouvrier, value: salaried, quote: "Statuut Ouvrier", page: 1}
+      applicant.employment_start_date: {raw: "01/05/2015", quote: "Datum indiensttreding 01/05/2015", page: 1}
+      applicant.dependents_count: {raw: "0", quote: "Personen ten laste 0", page: 1}
+      payslips:
+        period: {raw: "01/05/2026 - 31/05/2026", value: "2026-05", page: 1}
+        pay_date: {raw: "25/05/2026", quote: "Betaaldatum: 25/05/2026", page: 1}
+        employer_name: {raw: Peeters VOF, page: 1}
+        employer_enterprise_number: {raw: "BE 0366.618.186", quote: "Ondernemingsnummer BE 0366.618.186", page: 1}
+        employer_address: {raw: "Larssingel, 41, 1800, Vilvoorde", value: "Larssingel 41, 1800 Vilvoorde", quote: "Peeters VOF Larssingel, 41, 1800, Vilvoorde", page: 1}
+        employee_address: {raw: "Larssingel, 41, 1800, Vilvoorde", value: "Larssingel 41, 1800 Vilvoorde", quote: "Rosa Huybrechts Larssingel, 41, 1800, Vilvoorde", page: 1}
+        gross_monthly: {raw: "3.190,07", quote: "Bruto maandloon 3.190,07 EUR", page: 1}
+        social_security_employee: {raw: "- 416,94", quote: "ONSS - 416,94 EUR", page: 1}
+        taxable: {raw: "2.773,13", quote: "Belastbaar inkomen 2.773,13 EUR", page: 1}
+        withholding_tax: {raw: "- 831,94", quote: "Bedrijfsvoorheffing - 831,94 EUR", page: 1}
+        special_social_security: {raw: "- 30,60", quote: "Bijzondere bijdrage sociale zekerheid - 30,60 EUR", page: 1}
+        net_pay: {raw: "2.007,78", quote: "NETTO TE BETALEN 2.007,78 EUR", page: 1}
+        iban: {raw: "BE86 1296 0178 8955", quote: "Rekeningnummer (IBAN) BE86 1296 0178 8955", page: 1}
+
+  payslip_june2026.pdf:
+    sha256: cba16dff01ea9963f9a2e2ccf5160929113a5c4b29380789308a53327d9fbebb
+    doc_type: payslip
+    fields:
+      <<: *payslip_person
+      payslips:
+        period: {raw: "01/06/2026 - 30/06/2026", value: "2026-06", page: 1}
+        pay_date: {raw: "25/06/2026", quote: "Betaaldatum: 25/06/2026", page: 1}
+        employer_name: {raw: Peeters VOF, page: 1}
+        employer_enterprise_number: {raw: "BE 0366.618.186", quote: "Ondernemingsnummer BE 0366.618.186", page: 1}
+        employer_address: {raw: "Larssingel, 41, 1800, Vilvoorde", value: "Larssingel 41, 1800 Vilvoorde", quote: "Peeters VOF Larssingel, 41, 1800, Vilvoorde", page: 1}
+        employee_address: {raw: "Larssingel, 41, 1800, Vilvoorde", value: "Larssingel 41, 1800 Vilvoorde", quote: "Rosa Huybrechts Larssingel, 41, 1800, Vilvoorde", page: 1}
+        gross_monthly: {raw: "5.595,39", quote: "Bruto maandloon 5.595,39 EUR", page: 1}
+        social_security_employee: {raw: "- 731,32", quote: "ONSS - 731,32 EUR", page: 1}
+        taxable: {raw: "4.864,07", quote: "Belastbaar inkomen 4.864,07 EUR", page: 1}
+        withholding_tax: {raw: "- 1.702,42", quote: "Bedrijfsvoorheffing - 1.702,42 EUR", page: 1}
+        special_social_security: {raw: "- 59,46", quote: "Bijzondere bijdrage sociale zekerheid - 59,46 EUR", page: 1}
+        net_pay: {raw: "3.588,45", quote: "NETTO TE BETALEN 3.588,45 EUR", page: 1}
+        iban: {raw: "BE86 1296 0178 8955", quote: "Rekeningnummer (IBAN) BE86 1296 0178 8955", page: 1}
+
+  payslip_july2026.pdf:
+    sha256: f2843afa6bb9a653434650efc40d63e68802094da3aee9d3b93cbe1d2bff6a37
+    doc_type: payslip
+    fields:
+      <<: *payslip_person
+      payslips:
+        period: {raw: "01/07/2026 - 31/07/2026", value: "2026-07", page: 1}
+        pay_date: {raw: "25/07/2026", quote: "Betaaldatum: 25/07/2026", page: 1}
+        employer_name: {raw: Peeters VOF, page: 1}
+        employer_enterprise_number: {raw: "BE 0366.618.186", quote: "Ondernemingsnummer BE 0366.618.186", page: 1}
+        employer_address: {raw: "Larssingel, 41, 1800, Vilvoorde", value: "Larssingel 41, 1800 Vilvoorde", quote: "Peeters VOF Larssingel, 41, 1800, Vilvoorde", page: 1}
+        employee_address: {raw: "Larssingel, 41, 1800, Vilvoorde", value: "Larssingel 41, 1800 Vilvoorde", quote: "Rosa Huybrechts Larssingel, 41, 1800, Vilvoorde", page: 1}
+        gross_monthly: {raw: "4.808,27", quote: "Bruto maandloon 4.808,27 EUR", page: 1}
+        social_security_employee: {raw: "- 628,44", quote: "ONSS - 628,44 EUR", page: 1}
+        taxable: {raw: "4.179,83", quote: "Belastbaar inkomen 4.179,83 EUR", page: 1}
+        withholding_tax: {raw: "- 1.462,94", quote: "Bedrijfsvoorheffing - 1.462,94 EUR", page: 1}
+        special_social_security: {raw: "- 50,02", quote: "Bijzondere bijdrage sociale zekerheid - 50,02 EUR", page: 1}
+        net_pay: {raw: "2.678,77", quote: "NETTO TE BETALEN 2.678,77 EUR", page: 1}
+        salary_advance: {raw: "- 250,00", quote: "Voorschot - 250,00 EUR", page: 1}
+        iban: {raw: "BE86 1296 0178 8955", quote: "Rekeningnummer (IBAN) BE86 1296 0178 8955", page: 1}

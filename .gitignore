@@ -1,0 +1,13 @@
+.env
+.credit_review_cache/
+.venv/
+__pycache__/
+.pytest_cache/
+runs/
+
+# Private source materials are kept locally for reference, not published.
+case_brief.md
+case_pack/policy/
+policy/*.pdf
+.vscode/
+__pycache__/

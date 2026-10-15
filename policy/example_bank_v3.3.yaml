@@ -1,0 +1,1585 @@
+# =============================================================================
+# Credit Review policy configuration — Example Bank
+# Machine-readable translation of KRD-POL-2026 v3.3 (extract).
+#
+# Changes from v3.2 (risk team request; bank-owned lane only, no Example Systems change):
+#   5.3.e  NEW     renovation credits: term at most 15 years
+#                  -> new parameter max_term_renovation_years, new check 5.3.e
+#   5.4    TIGHTER own funds: at least EUR 1,000 or 10% (was 2%), whichever is higher
+#                  -> parameter min_own_funds_share 0.02 -> 0.10
+# Fields, document types, derived values and integrity checks are unchanged, so no
+# document is read again: the change is applied to the values already extracted.
+#
+# How this file was made: drafted with AI from the prose policy, then reviewed
+# by a human rule by rule. Every article carries its verbatim source text, and
+# the validator checks that each source sentence literally exists in the policy
+# document — so no rule can be invented without being traceable.
+#
+# Ownership (who may change what):
+#   Example Bank : parameters (owner: example_bank), required_documents, sections
+#               -> WHAT is assessed. Changed by the risk team, 4-eyes approved.
+#   Example Systems      : document_types, fields, derived, integrity_checks,
+#               parameters (owner: example_systems)
+#               -> HOW documents are read and computed. Changed by Example Systems,
+#                  regression-tested, released with notes to the bank.
+# =============================================================================
+
+schema_version: 1
+
+policy:
+  id: KRD-POL-2026
+  version: "3.3"
+  title: Residential Credit Policy (extract) — renovation and acquisition credits, natural persons
+  owner: Credit Risk Committee
+  status: draft                   # draft | approved | in_force
+  effective_from: null
+  source_document: example_bank_credit_policy_extract_v3.3.md
+  translation:
+    drafted_by: ai
+    reviewed_by: null             # risk author, after line-by-line review
+    approved_by: null             # second person (4-eyes)
+
+# -----------------------------------------------------------------------------
+# Inputs supplied per run, not read from documents
+# -----------------------------------------------------------------------------
+run_inputs:
+  decision_date:
+    type: date
+    default: today
+    description: Date of the credit decision. Drives 2.3 (identity document validity) and 4.1 (BECRIS age).
+  application_date:
+    type: date
+    default: latest_of
+    from_fields: [becris.consultation_date, payslips.pay_date, epc.issue_date]
+    description: Date the application was filed. The application form carries no date, so the default is the latest issue or consultation date in the dossier (never a validity or maturity date); the analyst can override it.
+
+# -----------------------------------------------------------------------------
+# Outcome vocabulary. Article outcome = highest-ranked outcome of its checks.
+# -----------------------------------------------------------------------------
+outcomes:
+  escalate:         {rank: 9, description: "Fraud signal. Route to the fraud desk; never resolved by one analyst (7.2)."}
+  fail:             {rank: 8, description: "A policy criterion is not met."}
+  document_missing: {rank: 7, description: "Required evidence is absent, so the criterion cannot be assessed."}
+  unresolved:       {rank: 6, description: "Documents disagree on an input and the outcome depends on which document is right."}
+  warning:          {rank: 5, description: "Exception, clarification or motivated exception required."}
+  analyst_review:   {rank: 4, description: "Reserved for analyst judgment; Credit Review provides the evidence, not the verdict."}
+  pass:             {rank: 3, description: "Criterion met, with evidence."}
+  info:             {rank: 2, description: "Computed value reported for transparency (method articles)."}
+  not_applicable:   {rank: 1, description: "The criterion does not apply to this file."}
+
+# -----------------------------------------------------------------------------
+# Judgment checks: what the language model may and may not do
+# -----------------------------------------------------------------------------
+judgment:
+  allowed_outcomes: [concern, no_concern_found]
+  outcome_mapping:
+    concern: warning
+    no_concern_found: analyst_review   # never 'pass' — the analyst confirms
+  rules:
+    - The model receives only the listed inputs, already extracted and computed.
+    - Every concern must cite the fact ids it rests on; uncited concerns are rejected.
+    - The model never computes a number that decides a file and never concludes on the file.
+
+# -----------------------------------------------------------------------------
+# Parameters. Every threshold lives here, so a policy change is a value change.
+# owner: example_bank = stated in the policy. owner: example_systems = implementation choice,
+# NOT in the policy — to be confirmed with Example Bank in the mapping workshop.
+# -----------------------------------------------------------------------------
+parameters:
+  min_applicant_age:            {value: 18,   unit: years,  owner: example_bank, source: "2.2", description: "Minimum applicant age at application."}
+  max_age_at_maturity:          {value: 76,   unit: years,  owner: example_bank, source: "2.2", description: "Credit must be repaid before this birthday."}
+  payslip_months_required:      {value: 3,    unit: months, owner: example_bank, source: "3.1", description: "Number of most recent monthly payslips required."}
+  max_income_deviation:         {value: 0.05, unit: ratio,  owner: example_bank, source: "3.1", description: "Maximum deviation of declared from evidenced net income before an exception."}
+  child_benefit_max_child_age:  {value: 18,   unit: years,  owner: example_bank, source: "3.3", description: "Child benefit counted at most until the youngest entitled child reaches this age."}
+  max_dsti:                     {value: 0.45, unit: ratio,  owner: example_bank, source: "3.4", description: "Maximum debt-service-to-income ratio."}
+  dsti_exception_threshold:     {value: 0.40, unit: ratio,  owner: example_bank, source: "3.4", description: "Above this DSTI a motivated senior-analyst exception is required."}
+  reference_rate:               {value: 0.04, unit: ratio,  owner: example_bank, source: "3.5", description: "Annual rate used when no rate is offered yet."}
+  min_free_income:              {value: 1200, unit: EUR,    owner: example_bank, source: "3.6", description: "Minimum monthly free income after all credit obligations."}
+  free_income_per_dependent:    {value: 250,  unit: EUR,    owner: example_bank, source: "3.6", description: "Additional free income required per dependent person."}
+  becris_max_age_months:        {value: 1,    unit: months, owner: example_bank, source: "4.1", description: "Maximum age of the BECRIS extract at the credit decision."}
+  regularized_arrear_min_age_years: {value: 1, unit: years, owner: example_bank, source: "4.2", description: "Regularized arrears older than this may be accepted by motivated exception."}
+  max_ltv:                      {value: 0.90, unit: ratio,  owner: example_bank, source: "5.2", description: "Maximum loan-to-value for acquisition credits."}
+  max_ltv_first_time_buyer:     {value: 1.00, unit: ratio,  owner: example_bank, source: "5.2", description: "Maximum loan-to-value for first-time buyers, by exception."}
+  epc_required_built_before:    {value: 2000, unit: year,   owner: example_bank, source: "5.3", description: "An EPC is required for properties built before this year."}
+  epc_energy_score_threshold:   {value: 400,  unit: kWh/m²·year, owner: example_bank, source: "5.3", description: "Above this score the works must include an eligible energy measure."}
+  eligible_energy_measures:     {value: [insulation, heating, glazing, ventilation, solar], unit: list, owner: example_bank, source: "5.3", description: "The bank's eligible-measures list."}
+  max_term_renovation_years:    {value: 15,   unit: years,  owner: example_bank, source: "5.3", description: "Maximum term of a renovation credit."}
+  min_own_funds_amount:         {value: 1000, unit: EUR,    owner: example_bank, source: "5.4", description: "Minimum own funds in absolute terms."}
+  min_own_funds_share:          {value: 0.10, unit: ratio,  owner: example_bank, source: "5.4", description: "Minimum own funds as a share of the total investment."}
+
+  # --- implementation parameters (not in the policy; to confirm) -------------
+  income_change_signal:         {value: 0.20, unit: ratio,  owner: example_systems, source: implementation, description: "Month-to-month gross pay change flagged as an income-trend signal for 7.1."}
+  min_employment_tenure_signal: {value: 1,    unit: years,  owner: example_systems, source: implementation, description: "Employment tenure below which continuity is flagged for 7.1."}
+  credit_cluster_window_days:   {value: 90,   unit: days,   owner: example_systems, source: implementation, description: "Window before the application in which new credits are counted as a cluster."}
+  credit_cluster_min_count:     {value: 2,    unit: count,  owner: example_systems, source: implementation, description: "Number of new credits within the window that forms a cluster."}
+  amount_match_tolerance:       {value: 1.00, unit: EUR,    owner: example_systems, source: implementation, description: "Tolerance when matching declared liabilities to BECRIS credits."}
+  floor_area_tolerance_m2:      {value: 1.0,  unit: m²,     owner: example_systems, source: implementation, description: "Tolerance when comparing surfaces across documents (deed habitable vs EPC gross)."}
+  employee_social_security_rate: {value: 0.1307, unit: ratio, owner: example_systems, source: implementation, description: "Statutory employee social-security rate, used to check payslip arithmetic."}
+
+# -----------------------------------------------------------------------------
+# Document types (closed set). 'detect' keywords drive deterministic
+# auto-detection; documents without a text layer fall back to the model.
+# The analyst always confirms the type before the run.
+# -----------------------------------------------------------------------------
+document_types:
+  application_form:      {label: Application form,                    detect: ["Gegevens lening", "Kredietbedrag", "Huidige financiële toestand"]}
+  authentic_data:        {label: Authentic-source data sheet,         detect: ["Authentieke data", "Aanslagbiljet gegevens"]}
+  identity_eid:          {label: Belgian eID,                         detect: ["IDENTITEITSKAART", "CARTE D'IDENTITÉ"]}
+  identity_passport:     {label: Passport,                            detect: ["PASPOORT", "PASSEPORT", "PASSPORT"]}
+  payslip:               {label: Payslip,                             detect: ["Loonfiche", "NETTO TE BETALEN"], note: Usually scanned; detected by the model when no text layer exists.}
+  tax_assessment:        {label: Personal tax assessment,             detect: ["Aanslagbiljet personenbelasting"]}
+  becris_extract:        {label: CKP/BECRIS extract,                  detect: ["Centrale voor kredieten aan particulieren"]}
+  purchase_agreement:    {label: Purchase agreement,                  detect: ["Verkoopovereenkomst", "Compromis"]}
+  notarial_deed:         {label: Notarial deed,                       detect: ["Akte van verkoop", "PROCES-VERBAAL VAN TOEWIJZING", "Notaris"]}
+  epc_certificate:       {label: EPC certificate,                     detect: ["Energieprestatiecertificaat"]}
+  works_conformity:      {label: Renovation works conformity form,    detect: ["Technische conformiteit renovatiedossier"], note: Not an electrical conformity certificate.}
+  electrical_conformity: {label: Electrical installation conformity,  detect: ["gelijkvormigheidsonderzoek", "elektrische installatie", "AREI"]}
+  bank_statement:        {label: Bank statement,                      detect: ["Rekeninguittreksel", "Uittreksel"]}
+  other:                 {label: Other / unclassified,                detect: []}
+
+# -----------------------------------------------------------------------------
+# Required documents (policy section 6, plus the conditional requirement in 3.2)
+# -----------------------------------------------------------------------------
+required_documents:
+  - id: D1
+    source: Application form, signed
+    description: Application form, signed.
+    accepts: [application_form]
+    count: {min: 1, max: 1}
+    blocks_offer: true
+
+  - id: D2
+    source: Identity document (eID front and back)
+    description: Identity document (eID front and back, or passport), per applicant.
+    accepts: [identity_eid, identity_passport]
+    per_applicant: true
+    count: {min: 1, max: 1}
+    blocks_offer: true
+
+  - id: D3
+    source: Payslips, 3 most recent months
+    description: Payslips for the three most recent months, per salaried applicant.
+    accepts: [payslip]
+    per_applicant: true
+    applies_when:
+      - {field: applicant.employment_type, op: equals, value: salaried}
+    count: {min: 3}
+    unique_by: payslips.period        # two payslips for the same month = duplicate
+
+  - id: D4
+    source: Personal tax assessment, most recent
+    description: Most recent personal tax assessment, per applicant. The authentic-source data sheet carries the tax data and is accepted (assumption).
+    accepts: [tax_assessment, authentic_data]
+    per_applicant: true
+    count: {min: 1}
+    blocks_offer: true
+
+  - id: D4-SE
+    source: Income of self-employed applicants must be evidenced by the two most recent tax assessments
+    description: Two most recent tax assessments, per self-employed applicant (article 3.2).
+    accepts: [tax_assessment]
+    per_applicant: true
+    applies_when:
+      - {field: applicant.employment_type, op: equals, value: self_employed}
+    count: {min: 2}
+    unique_by: tax.income_year
+
+  - id: D5
+    source: CKP/BECRIS extract, max 1 month old
+    description: CKP/BECRIS extract, per applicant. Age is checked in 4.1.
+    accepts: [becris_extract]
+    per_applicant: true
+    count: {min: 1, max: 1}
+    blocks_offer: true
+
+  - id: D6
+    source: Purchase agreement or deed of the property
+    description: Purchase agreement or deed of the property.
+    accepts: [purchase_agreement, notarial_deed]
+    applies_when:
+      - {field: credit.purpose, op: in, value: [acquisition, renovation]}
+    count: {min: 1}
+    blocks_offer: true
+
+  - id: D7
+    source: EPC certificate
+    description: EPC certificate, for renovation files on property built before 2000. Validity is checked in 5.3.
+    accepts: [epc_certificate]
+    applies_when:
+      - {field: credit.purpose, op: equals, value: renovation}
+      - {field: property.construction_year, op: less_than, param: epc_required_built_before}
+    count: {min: 1, max: 1}
+
+  - id: D8
+    source: Bank statements of the salary account, 3 most recent months
+    description: Salary-account bank statements for the three most recent months, per salaried applicant. Presence is checked; coverage of the three months is confirmed by the analyst in the pilot.
+    accepts: [bank_statement]
+    per_applicant: true
+    applies_when:
+      - {field: applicant.employment_type, op: equals, value: salaried}
+    count: {min: 1}                   # one statement may cover several months
+
+  - id: D9
+    source: Certificate of conformity of the electrical installation
+    description: Electrical installation conformity certificate, where required by regional regulation.
+    accepts: [electrical_conformity]
+    decided_by: analyst               # regional regulation is not in the policy
+    count: {min: 1}
+
+# -----------------------------------------------------------------------------
+# Fields: everything read from documents, with type, cardinality and sources.
+#   cardinality one          -> must agree across sources; disagreement = conflict
+#   cardinality per_document -> one record per document (e.g. one per payslip)
+#   cardinality list         -> a list of items within one document
+# 'sources' maps document type -> where the value sits (Dutch label), which
+# the extractor uses as a hint and the report uses as an explanation.
+# -----------------------------------------------------------------------------
+fields:
+  applicant.first_name:
+    type: name
+    cardinality: one
+    required: true
+    description: Applicant first name.
+    sources:
+      identity_eid: PRÉNOMS / VOORNAMEN
+      identity_passport: same label as on the eID
+      application_form: Gezinsleden — Voornaam
+      authentic_data: Voornaam
+      becris_extract: Voornaam
+      payslip: employee name
+      notarial_deed: Naam koper
+
+  applicant.last_name:
+    type: name
+    cardinality: one
+    required: true
+    description: Applicant last name.
+    sources:
+      identity_eid: NOM / NAAM
+      identity_passport: same label as on the eID
+      application_form: Gezinsleden — Naam
+      authentic_data: Achternaam
+      becris_extract: Naam
+      payslip: employee name
+      notarial_deed: Naam koper
+
+  applicant.rrn:
+    type: rrn
+    cardinality: one
+    required: true
+    sensitive: true
+    description: Belgian national register number (rijksregisternummer).
+    sources:
+      identity_eid: N° REG. NAT. / RIJKSREGISTERNR.
+      identity_passport: same label as on the eID
+      application_form: Rijksregisternummer klant
+      authentic_data: Rijksregisternummer
+      becris_extract: Identificatiecode
+      payslip: Rijksregisternummer
+      notarial_deed: Koper — Rijksregisternummer
+
+  applicant.birth_date:
+    type: date
+    cardinality: one
+    required: true
+    description: Applicant date of birth.
+    sources:
+      identity_eid: DATE DE NAISSANCE / GEBOORTEDATUM
+      identity_passport: same label as on the eID
+      authentic_data: Geboortedatum
+      becris_extract: Geboortedatum
+      payslip: Geboortedatum
+
+  applicant.sex:
+    type: enum
+    values: [F, M]
+    cardinality: one
+    required: true
+    description: Applicant sex as stated on documents (V on the eID = F).
+    sources:
+      identity_eid: SEXE / GESLACHT
+      identity_passport: same label as on the eID
+      payslip: Geslacht
+
+  applicant.civil_status:
+    type: enum
+    values: [single, married, legal_cohabitation, cohabiting, divorced, separated, widowed]
+    cardinality: one
+    required: true
+    description: Civil status. A payslip may state a tax-household status rather than the civil status; a mismatch is flagged, not concluded.
+    sources:
+      authentic_data: Burgerlijke staat
+      payslip: Burgerlijke staat
+
+  applicant.domicile_address:
+    type: address
+    cardinality: one
+    required: true
+    description: Applicant's domicile address.
+    sources:
+      application_form: Uitvoeringsadres, when 'Ik ben hier gedomicilieerd' is true
+      authentic_data: Domicilie-adres
+      payslip: employee address under the employee name
+
+  applicant.employment_type:
+    type: enum
+    values: [salaried, self_employed, other]
+    cardinality: one
+    required: true
+    description: Employment type of the applicant.
+    sources:
+      application_form: Inkomen — Type (Beroepsmatig (loondienst) = salaried)
+      payslip: presence of a payslip / Statuut
+
+  applicant.employment_start_date:
+    type: date
+    cardinality: one
+    required: false
+    description: Start date with the current employer.
+    sources:
+      payslip: Datum indiensttreding
+
+  applicant.dependents_count:
+    type: integer
+    cardinality: one
+    required: true
+    description: Number of dependent persons.
+    sources:
+      payslip: Personen ten laste
+
+  applicant.first_time_buyer:
+    type: boolean
+    cardinality: one
+    required: false
+    description: Whether the applicant is a first-time buyer (acquisition credits only).
+    sources:
+      application_form: first-time buyer declaration
+
+  household.member_count:
+    type: integer
+    cardinality: one
+    required: true
+    description: Number of household members stated in the application.
+    sources:
+      application_form: number of Gezinsleden entries
+
+  identity.document_number:
+    type: string
+    cardinality: one
+    required: true
+    sensitive: true
+    description: Identity document number.
+    sources:
+      identity_eid: N° CARTE / KAARTNR.
+      identity_passport: Passport No. / Paspoortnummer
+
+  identity.valid_until:
+    type: date
+    cardinality: one
+    required: true
+    description: Expiry date of the identity document.
+    sources:
+      identity_eid: VALABLE DU … AU / GELDIG VAN … TOT
+      identity_passport: Date of expiry / Vervaldatum
+
+  identity.mrz:
+    type: string
+    cardinality: one
+    required: false
+    sensitive: true
+    description: Machine-readable zone of the identity document (three lines, verbatim).
+    sources:
+      identity_eid: machine-readable zone on the back
+      identity_passport: machine-readable zone
+
+  credit.purpose:
+    type: enum
+    values: [renovation, acquisition]
+    cardinality: one
+    required: true
+    description: Purpose of the requested credit.
+    sources:
+      application_form: Categorieën van werken (renovation) / Ik vraag de lening aan voor
+
+  credit.amount:
+    type: money
+    cardinality: one
+    required: true
+    description: Requested credit amount.
+    sources:
+      application_form: Kredietbedrag
+
+  credit.term_years:
+    type: integer
+    cardinality: one
+    required: true
+    description: Requested term in years.
+    sources:
+      application_form: Gewenste looptijd, in jaren
+
+  credit.offered_rate:
+    type: percent
+    cardinality: one
+    required: false
+    description: Offered annual rate, if already fixed. Absent = reference rate (3.5).
+    sources:
+      application_form: offered rate, if stated
+
+  credit.repayment_iban:
+    type: iban
+    cardinality: one
+    required: true
+    sensitive: true
+    description: Account for repayment by direct debit.
+    sources:
+      application_form: Bankrekeningnummer voor de terugbetaling via domiciliëring (IBAN)
+
+  application.signature:
+    type: string
+    cardinality: one
+    required: false
+    description: The applicant's signature, or a printed mention of an electronic signature. Not found when the form is unsigned.
+    sources:
+      application_form: signature block or e-signature mention
+
+  income.declared_professional_monthly:
+    type: money
+    cardinality: one
+    required: true
+    description: Declared monthly professional net income.
+    sources:
+      application_form: Maandelijkse inkomsten — Type Beroepsmatig — Maandelijks bedrag
+
+  income.declared_items:
+    type: list
+    cardinality: list
+    required: true
+    description: All declared monthly income items.
+    items:
+      type: {type: enum, values: [professional, child_benefit, alimony, rental, other], description: "professional = Beroepsmatig; child_benefit = Groeipakket / kinderbijslag."}
+      label: {type: string, description: "Type and description as printed."}
+      monthly_amount: {type: money, description: "Maandelijks bedrag."}
+    sources:
+      application_form: Maandelijkse inkomsten — Inkomen nr. N
+
+  liabilities.declared:
+    type: list
+    cardinality: list
+    required: true
+    description: Credits declared by the applicant.
+    items:
+      type: {type: string, description: "Type of credit as printed."}
+      principal: {type: money, description: "Afgesloten kredietbedrag."}
+      outstanding_balance: {type: money, description: "Openstaand saldo."}
+      monthly_payment: {type: money, description: "Maandelijks af te lossen bedrag."}
+      end_date: {type: date, description: "Datum laatste termijn."}
+    sources:
+      application_form: Maandelijkse lasten — Krediet / lening nr. N
+
+  own_funds.declared:
+    type: money
+    cardinality: one
+    required: true
+    description: Own funds contributed by the applicant.
+    sources:
+      application_form: Eigen inbreng
+
+  renovation.works:
+    type: list
+    cardinality: list
+    required: false
+    description: Planned works, each mapped to an energy-measure category.
+    items:
+      label: {type: string, description: "The work as printed."}
+      category: {type: enum, values: [insulation, heating, glazing, ventilation, solar, other], description: "Energy-measure category: insulation (walls, roof, floor), heating (boiler, heat pump), glazing, ventilation, solar; other if none applies."}
+    sources:
+      application_form: Ik wil een lening aanvragen voor
+
+  renovation.total_investment:
+    type: money
+    cardinality: one
+    required: false
+    description: Total cost of the planned works.
+    sources:
+      application_form: Totaal bedrag aan geplande investeringen
+      works_conformity: TOTAAL — Totaal bedrag
+
+  renovation.approved_amount:
+    type: money
+    cardinality: one
+    required: false
+    description: Amount found conform by the works conformity check.
+    sources:
+      works_conformity: TOTAAL — Conform bedrag
+
+  payslips:
+    type: record
+    cardinality: per_document
+    required: true
+    description: One record per payslip.
+    items:
+      period: {type: month, description: "Pay period, e.g. 01/05/2026 - 31/05/2026."}
+      pay_date: {type: date, description: "Betaaldatum."}
+      employer_name: {type: string, description: "Employer name (Werkgever)."}
+      employer_enterprise_number: {type: string, description: "Ondernemingsnummer of the employer, as printed."}
+      employer_address: {type: address, description: "Address in the employer (Werkgever) block."}
+      employee_address: {type: address, description: "Address printed under the employee name."}
+      gross_monthly: {type: money, description: "Bruto maandloon."}
+      social_security_employee: {type: money, description: "RSZ bijdrage werknemer / ONSS."}
+      taxable: {type: money, description: "Belastbaar inkomen / Imposable."}
+      withholding_tax: {type: money, description: "Bedrijfsvoorheffing / Pr.prof."}
+      special_social_security: {type: money, description: "Bijzondere bijdrage sociale zekerheid."}
+      net_pay: {type: money, description: "NETTO TE BETALEN, before any advance is deducted."}
+      salary_advance: {type: money, description: "Voorschot (salary advance) deducted, if any."}
+      seizure: {type: money, description: "Loonbeslag (wage seizure), if any."}
+      iban: {type: iban, description: "Employee bank account (IBAN)."}
+    sources:
+      payslip: whole document (Loonfiche)
+
+  becris.consultation_date:
+    type: date
+    cardinality: one
+    required: true
+    description: Date the BECRIS extract was consulted.
+    sources:
+      becris_extract: Datum
+
+  becris.arrear_indicator:
+    type: boolean
+    cardinality: one
+    required: true
+    description: Registered payment-arrear indicator for the person.
+    sources:
+      becris_extract: Indicator wanbetaling
+
+  becris.credits:
+    type: list
+    cardinality: list
+    required: true
+    description: Credits registered in the CKP.
+    items:
+      category: {type: string, description: "Categorie instrument."}
+      contract_amount: {type: money, description: "Toegezegd leningenbedrag."}
+      instalment: {type: money, description: "Termijnbedrag."}
+      total_repayable: {type: money, description: "Totaal terug te betalen bedrag."}
+      instalment_count: {type: integer, description: "Aantal betalingstermijnen."}
+      start_date: {type: date, description: "Aanvangsdatum (van het contract)."}
+      first_instalment_date: {type: date, description: "Datum van de eerste betalingstermijn."}
+      end_date: {type: date, description: "Wettelijke eindvervaldatum."}
+      arrear_status: {type: string, description: "Wanbetalingsstatus van het instrument, as printed."}
+      regularized_date: {type: date, description: "Date an arrear was regularized, if printed."}
+    sources:
+      becris_extract: Kredieten van de debiteur in de CKP
+
+  tax.income_year:
+    type: integer
+    cardinality: one
+    required: true
+    description: Income year of the most recent tax data.
+    sources:
+      authentic_data: Inkomensjaar
+      tax_assessment: Inkomsten / aanslagjaar
+
+  tax.aggregate_taxable_income:
+    type: money
+    cardinality: one
+    required: true
+    description: The applicant's own income taxed at the progressive rates for that income year (gezamenlijk belastbaar inkomen, as opposed to afzonderlijk belastbaar inkomen, taxed separately). Not a household total.
+    sources:
+      authentic_data: Gezamenlijk belastbaar inkomen
+      tax_assessment: Gezamenlijk belastbaar inkomen
+
+  property.address:
+    type: address
+    cardinality: one
+    required: true
+    description: Address of the financed property.
+    sources:
+      application_form: Uitvoeringsadres
+      authentic_data: Uitvoeringsadres
+      notarial_deed: Adres
+      purchase_agreement: Adres
+      epc_certificate: address in the header
+
+  property.country:
+    type: string
+    cardinality: one
+    required: true
+    description: Country of the property.
+    sources:
+      notarial_deed: Land
+      purchase_agreement: Land
+
+  property.cadastral_location:
+    type: string
+    cardinality: one
+    required: true
+    description: Cadastral division and section.
+    sources:
+      notarial_deed: Kadastrale ligging
+      purchase_agreement: Kadastrale ligging
+
+  property.cadastral_parcel:
+    type: string
+    cardinality: one
+    required: true
+    description: Cadastral parcel number.
+    sources:
+      notarial_deed: Perceelnummer
+      purchase_agreement: Perceelnummer
+
+  property.construction_year:
+    type: year_range
+    cardinality: one
+    required: true
+    description: Year (or year range) of construction. A year is consistent with a range that contains it.
+    sources:
+      authentic_data: Omschrijving bouwjaar
+      epc_certificate: Bouwjaar
+
+  property.floor_area_m2:
+    type: area
+    cardinality: one
+    required: false
+    tolerance_param: floor_area_tolerance_m2
+    description: Floor area of the property.
+    sources:
+      notarial_deed: Bewoonbare oppervlakte
+      epc_certificate: Bruto vloeroppervlakte
+
+  property.owner_rrn:
+    type: rrn
+    cardinality: one
+    required: true
+    sensitive: true
+    description: National register number of the buyer on the deed.
+    sources:
+      notarial_deed: Koper — Rijksregisternummer
+      purchase_agreement: Koper — Rijksregisternummer
+
+  property.declared_owner:
+    type: boolean
+    cardinality: one
+    required: true
+    description: Applicant declares to be owner.
+    sources:
+      application_form: Ik ben eigenaar
+
+  property.acquisition_date:
+    type: date
+    cardinality: one
+    required: false
+    description: Date of the acquisition deed.
+    sources:
+      application_form: De akte van de woning is verleden op
+      notarial_deed: Datum akte
+
+  property.purchase_price:
+    type: money
+    cardinality: one
+    required: false
+    description: Purchase price excluding costs.
+    sources:
+      notarial_deed: Aankoopprijs
+      purchase_agreement: Aankoopprijs
+
+  epc.certificate_id:
+    type: string
+    cardinality: one
+    required: true
+    description: EPC identification code.
+    sources:
+      epc_certificate: identificatiecode
+      authentic_data: EPB attestnumer
+
+  epc.issue_date:
+    type: date
+    cardinality: one
+    required: true
+    description: Date the EPC was issued.
+    sources:
+      epc_certificate: Datum (verklaring van de verslaggever)
+      authentic_data: EPB datum ingediend
+
+  epc.valid_until:
+    type: date
+    cardinality: one
+    required: true
+    description: Last day of EPC validity.
+    sources:
+      epc_certificate: geldig tot en met
+
+  epc.energy_score:
+    type: number
+    cardinality: one
+    required: true
+    description: Energy score in kWh/m²·year.
+    sources:
+      epc_certificate: kWh / (m² jaar)
+
+  epc.permit_application_date:
+    type: date
+    cardinality: one
+    required: false
+    description: Date of the building permit application.
+    sources:
+      epc_certificate: Datum aanvraag vergunning
+
+  epc.works_end_date:
+    type: date
+    cardinality: one
+    required: false
+    description: Date the construction works ended.
+    sources:
+      epc_certificate: Datum einde van de werken
+
+# -----------------------------------------------------------------------------
+# Derived values: deterministic computations, implemented and tested by Example Systems.
+# Inputs prefixed with $ come from the run ($run.*) or the document stage
+# ($documents), not from extraction.
+# -----------------------------------------------------------------------------
+derived:
+  applicant.age_at_application:
+    type: number
+    fn: age_in_years
+    inputs: [applicant.birth_date, $run.application_date]
+    description: Age of the applicant at application.
+
+  applicant.age_at_maturity:
+    type: number
+    fn: age_at_maturity
+    inputs: [applicant.birth_date, $run.decision_date, credit.term_years]
+    description: Age of the applicant when the credit is fully repaid.
+
+  applicant.employment_tenure_years:
+    type: number
+    fn: years_between
+    inputs: [applicant.employment_start_date, $run.application_date]
+    description: Years with the current employer.
+
+  identity.valid_at_decision:
+    type: boolean
+    fn: date_on_or_after
+    inputs: [identity.valid_until, $run.decision_date]
+    description: Identity document still valid on the decision date.
+
+  payslips.cover_most_recent_months:
+    type: boolean
+    fn: payslips_cover_recent_months
+    inputs: [payslips, $run.application_date]
+    params: [payslip_months_required]
+    description: Payslips cover consecutive months up to the most recent month already paid at application (pay day inferred from the payslips).
+
+  payslips.has_salary_advance_or_seizure:
+    type: boolean
+    fn: payslips_have_advance_or_seizure
+    inputs: [payslips]
+    description: Any payslip shows a salary advance or a seizure.
+
+  income.evidenced_net_monthly:
+    type: money
+    fn: average_net_pay
+    inputs: [payslips]
+    params: [payslip_months_required]
+    description: Average net pay over the most recent required months.
+
+  income.declared_deviation:
+    type: ratio
+    fn: relative_deviation
+    inputs: [income.declared_professional_monthly, income.evidenced_net_monthly]
+    description: Relative deviation of declared from evidenced net professional income.
+
+  income.declared_non_professional_monthly:
+    type: money
+    fn: sum_non_professional_income
+    inputs: [income.declared_items]
+    description: Declared non-professional income (child benefit, alimony, rental, other).
+
+  income.declared_child_benefit_monthly:
+    type: money
+    fn: sum_child_benefit
+    inputs: [income.declared_items]
+    description: Declared child benefit (Groeipakket).
+
+  household.supports_declared_child_benefit:
+    type: boolean
+    fn: child_benefit_consistent_with_household
+    inputs: [income.declared_child_benefit_monthly, applicant.dependents_count, household.member_count]
+    description: Declared child benefit is matched by at least one dependent child in the stated household.
+
+  income.counted_monthly:
+    type: money
+    fn: counted_income
+    inputs: [income.evidenced_net_monthly, applicant.employment_type]
+    description: Net monthly income counted for 3.4 and 3.6 — evidenced professional income. Non-professional income is excluded until the analyst confirms 3.3.
+
+  income.tax_vs_evidenced_ratio:
+    type: ratio
+    fn: tax_income_ratio
+    inputs: [tax.aggregate_taxable_income, payslips]
+    description: Monthly taxable income from the tax data divided by average taxable pay on the payslips.
+
+  income.max_monthly_change:
+    type: ratio
+    fn: max_relative_change
+    inputs: [payslips]
+    description: Largest month-to-month relative change in gross pay.
+
+  obligations.existing_monthly:
+    type: money
+    fn: existing_obligations
+    inputs: [becris.credits, liabilities.declared]
+    params: [amount_match_tolerance]
+    description: Monthly instalments of all existing credits — BECRIS credits plus declared credits not found in BECRIS.
+
+  credit.new_monthly_payment:
+    type: money
+    fn: annuity_payment
+    inputs: [credit.amount, credit.term_years, credit.offered_rate]
+    params: [reference_rate]
+    description: Monthly repayment of the requested credit on an annuity basis (3.5).
+
+  obligations.total_monthly:
+    type: money
+    fn: sum_amounts
+    inputs: [obligations.existing_monthly, credit.new_monthly_payment]
+    description: All monthly credit obligations including the requested credit.
+
+  dsti:
+    type: ratio
+    fn: ratio
+    inputs: [obligations.total_monthly, income.counted_monthly]
+    description: Debt-service-to-income ratio (3.4).
+
+  income.free_monthly:
+    type: money
+    fn: difference
+    inputs: [income.counted_monthly, obligations.total_monthly]
+    description: Monthly income left after all credit obligations.
+
+  income.free_required:
+    type: money
+    fn: required_free_income
+    inputs: [applicant.dependents_count]
+    params: [min_free_income, free_income_per_dependent]
+    description: Minimum free income for this household (3.6).
+
+  becris.within_max_age:
+    type: boolean
+    fn: within_months
+    inputs: [becris.consultation_date, $run.decision_date]
+    params: [becris_max_age_months]
+    description: BECRIS extract not older than the maximum at the decision date.
+
+  becris.has_unregularized_arrear:
+    type: boolean
+    fn: has_unregularized_arrear
+    inputs: [becris.arrear_indicator, becris.credits]
+    description: A registered arrear that has not been regularized.
+
+  becris.has_regularized_arrear:
+    type: boolean
+    fn: has_regularized_arrear
+    inputs: [becris.credits]
+    params: [regularized_arrear_min_age_years]
+    description: A regularized arrear is registered.
+
+  liabilities.all_becris_credits_declared:
+    type: boolean
+    fn: all_register_credits_declared
+    inputs: [becris.credits, liabilities.declared]
+    params: [amount_match_tolerance]
+    description: Every BECRIS credit matches a declared liability (contract amount and instalment).
+
+  property.owned_by_applicant:
+    type: boolean
+    fn: applicant_owns_property
+    inputs: [property.owner_rrn, applicant.rrn, property.declared_owner]
+    description: The buyer on the deed is the applicant.
+
+  epc.valid_at_application:
+    type: boolean
+    fn: date_on_or_after
+    inputs: [epc.valid_until, $run.application_date]
+    description: EPC still valid on the application date.
+
+  renovation.includes_eligible_measure:
+    type: boolean
+    fn: includes_any_category
+    inputs: [renovation.works]
+    params: [eligible_energy_measures]
+    description: At least one planned work is on the eligible-measures list.
+
+  own_funds.required:
+    type: money
+    fn: required_own_funds
+    inputs: [renovation.total_investment]
+    params: [min_own_funds_amount, min_own_funds_share]
+    description: Required own funds — the higher of the absolute minimum and the share of the total investment.
+
+  credit.ltv:
+    type: ratio
+    fn: ratio
+    inputs: [credit.amount, property.purchase_price]
+    description: Loan-to-value against the purchase price.
+
+  documents.offer_requirements_met:
+    type: boolean
+    fn: offer_blocking_documents_present
+    inputs: [$documents]
+    description: All requirements marked blocks_offer (D1–D6) are satisfied.
+
+# -----------------------------------------------------------------------------
+# Integrity checks: Example Systems' validation library, run before the policy rules.
+#   fraud_signal -> escalated under 7.2   warning -> flagged under 7.2   info -> shown only
+# -----------------------------------------------------------------------------
+integrity_checks:
+  - id: I-01
+    description: National number check digit
+    fn: rrn_checksum_valid
+    inputs: [applicant.rrn]
+    severity: fraud_signal
+
+  - id: I-02
+    description: National number vs date of birth
+    fn: rrn_matches_birth_date
+    inputs: [applicant.rrn, applicant.birth_date]
+    severity: fraud_signal
+
+  - id: I-03
+    description: National number vs stated sex
+    fn: rrn_matches_sex
+    inputs: [applicant.rrn, applicant.sex]
+    severity: fraud_signal
+
+  - id: I-04
+    description: Identity document MRZ check digits
+    fn: mrz_check_digits_valid
+    inputs: [identity.mrz]
+    severity: fraud_signal
+
+  - id: I-05
+    description: Identity document MRZ vs printed data
+    fn: mrz_matches_identity
+    inputs: [identity.mrz, applicant.birth_date, applicant.sex, identity.valid_until]
+    severity: fraud_signal
+
+  - id: I-06
+    description: Employer enterprise number check digit
+    fn: enterprise_number_valid
+    inputs: [payslips]
+    severity: fraud_signal
+
+  - id: I-07
+    description: Declared balances vs BECRIS contract dates
+    fn: declared_balances_consistent_with_register
+    inputs: [liabilities.declared, becris.credits, $run.application_date]
+    params: [amount_match_tolerance]
+    severity: fraud_signal
+
+  - id: I-08
+    description: New credits contracted shortly before the application
+    fn: no_credit_cluster_before_application
+    inputs: [becris.credits, $run.application_date]
+    params: [credit_cluster_window_days, credit_cluster_min_count]
+    severity: fraud_signal
+
+  - id: I-09
+    description: Bank account numbers (IBAN)
+    fn: iban_valid
+    inputs: [credit.repayment_iban, payslips]
+    severity: warning
+
+  - id: I-10
+    description: Employee address vs employer address on payslips
+    fn: employee_address_differs_from_employer
+    inputs: [payslips]
+    severity: warning
+
+  - id: I-11
+    description: EPC building dates in chronological order
+    fn: epc_dates_chronological
+    inputs: [epc.permit_application_date, epc.works_end_date, property.construction_year]
+    severity: warning
+
+  - id: I-12
+    description: Payslip social-security rate
+    fn: payslip_social_security_rate
+    inputs: [payslips]
+    params: [employee_social_security_rate]
+    severity: warning
+
+  - id: I-13
+    description: Payslip net pay reconciliation
+    fn: payslip_net_reconciles
+    inputs: [payslips]
+    severity: info
+
+# -----------------------------------------------------------------------------
+# Policy rules, in the policy's own order.
+# Check ops (closed set):
+#   at_most / at_least / less_than  field vs limit {param|field}, optional warn band
+#   equals / in                     field vs literal value
+#   is_true / is_false              boolean field
+#   present                         fields have a value
+#   consistent                      fields agree across all their sources
+#   document_requirement            a required_documents entry is satisfied
+#   integrity                       integrity checks of a given severity passed
+#   computed                        report a derived value (method articles)
+#   judgment                        model question over listed inputs
+#   reserved_for_analyst            Credit Review never evaluates this
+# -----------------------------------------------------------------------------
+sections:
+  - id: "1"
+    title: Scope
+    articles:
+      - id: "1"
+        source: >-
+          This policy applies to mortgage and renovation credits granted to natural persons
+          for residential property located in Belgium.
+        checks:
+          - id: "1.a"
+            description: Credit purpose is within the scope of this policy.
+            kind: deterministic
+            op: in
+            field: credit.purpose
+            value: [renovation, acquisition]
+            on_fail: fail
+
+  - id: "2"
+    title: Borrower and identity
+    articles:
+      - id: "2.1"
+        source: >-
+          Every applicant must be identified with a valid Belgian eID or passport. The national
+          register number (rijksregisternummer) stated on the identity document must correspond
+          with the number used on all other documents in the file.
+        checks:
+          - id: "2.1.a"
+            description: An identity document (eID or passport) is present.
+            kind: deterministic
+            op: document_requirement
+            requirement: D2
+          - id: "2.1.b"
+            description: The national register number is the same on every document.
+            kind: deterministic
+            op: consistent
+            fields: [applicant.rrn]
+            on_fail: fail
+
+      - id: "2.2"
+        source: >-
+          The applicant must be at least 18 years old at application. The credit must be fully
+          repaid before the applicant's 76th birthday. For files with multiple applicants, the
+          youngest applicant's age is used.
+        checks:
+          - id: "2.2.a"
+            description: Applicant is at least 18 at application.
+            kind: deterministic
+            op: at_least
+            field: applicant.age_at_application
+            limit: {param: min_applicant_age}
+            on_fail: fail
+          - id: "2.2.b"
+            description: Credit is fully repaid before the applicant's 76th birthday.
+            kind: deterministic
+            op: less_than
+            field: applicant.age_at_maturity
+            limit: {param: max_age_at_maturity}
+            on_fail: fail
+
+      - id: "2.3"
+        source: The identity document may not be expired at the date of the credit decision.
+        checks:
+          - id: "2.3.a"
+            description: Identity document is valid on the decision date.
+            kind: deterministic
+            op: is_true
+            field: identity.valid_at_decision
+            on_fail: fail
+
+  - id: "3"
+    title: Income and affordability
+    articles:
+      - id: "3.1"
+        source: >-
+          Professional income of salaried applicants must be evidenced by payslips for the three
+          most recent months and must be consistent with the income declared in the application.
+          A declared professional income that deviates more than 5% from the average evidenced
+          net income requires written clarification and is treated as an exception.
+        checks:
+          - id: "3.1.a"
+            description: Payslips cover the three most recent months.
+            kind: deterministic
+            op: is_true
+            field: payslips.cover_most_recent_months
+            applies_when:
+              - {field: applicant.employment_type, op: equals, value: salaried}
+            on_fail: document_missing
+          - id: "3.1.b"
+            description: Declared income is within 5% of the evidenced average net income; otherwise written clarification is required.
+            kind: deterministic
+            op: at_most
+            field: income.declared_deviation
+            limit: {param: max_income_deviation}
+            applies_when:
+              - {field: applicant.employment_type, op: equals, value: salaried}
+            on_fail: warning
+
+      - id: "3.2"
+        source: >-
+          Income of self-employed applicants must be evidenced by the two most recent tax
+          assessments (aanslagbiljetten). Where a personal tax assessment is available for any
+          applicant, the declared income situation should be plausible in light of it.
+        checks:
+          - id: "3.2.a"
+            description: Two most recent tax assessments are present for a self-employed applicant.
+            kind: deterministic
+            op: document_requirement
+            requirement: D4-SE
+          - id: "3.2.b"
+            description: Declared income situation is plausible in light of the tax assessment.
+            kind: judgment
+            op: judgment
+            applies_when:
+              - {field: tax.aggregate_taxable_income, op: present}
+            inputs:
+              - income.declared_professional_monthly
+              - income.evidenced_net_monthly
+              - tax.income_year
+              - tax.aggregate_taxable_income
+              - income.tax_vs_evidenced_ratio
+              - payslips
+            question: >-
+              Is the declared income situation plausible in light of the most recent tax data?
+              Compare the declared monthly professional income, the income evidenced by the
+              payslips and the taxable income of the most recent income year. Report a concern
+              if they cannot be reconciled without an explanation from the applicant.
+
+      - id: "3.3"
+        source: >-
+          Non-professional income (child benefit / Groeipakket, alimony received, rental income)
+          may be counted only where it is durable for the term of the credit and consistent with
+          the household composition stated in the file. Child benefit is counted at most until the
+          youngest entitled child turns 18. The analyst documents the reasoning.
+        checks:
+          - id: "3.3.a"
+            description: Declared child benefit is matched by a dependent child in the stated household.
+            kind: deterministic
+            op: is_true
+            field: household.supports_declared_child_benefit
+            applies_when:
+              - {field: income.declared_child_benefit_monthly, op: greater_than, value: 0}
+            on_fail: warning
+          - id: "3.3.b"
+            description: Declared non-professional income is durable for the term and consistent with the household.
+            kind: judgment
+            op: judgment
+            applies_when:
+              - {field: income.declared_non_professional_monthly, op: greater_than, value: 0}
+            inputs:
+              - income.declared_items
+              - household.member_count
+              - applicant.dependents_count
+              - applicant.civil_status
+              - credit.term_years
+            params: [child_benefit_max_child_age]
+            question: >-
+              Can the declared non-professional income be counted? It must be durable for the full
+              term of the credit and consistent with the household composition stated in the file.
+              Child benefit counts at most until the youngest entitled child reaches the age given by the parameter child_benefit_max_child_age.
+          - id: "3.3.c"
+            description: Income counted for affordability (non-professional income excluded until the analyst confirms 3.3).
+            kind: deterministic
+            op: computed
+            field: income.counted_monthly
+
+      - id: "3.4"
+        source: >-
+          The debt-service-to-income ratio (DSTI) — all monthly credit obligations of the
+          household, including the requested credit, divided by total counted net monthly income —
+          may not exceed 45%. Between 40% and 45% the file requires a motivated exception by a
+          senior analyst.
+        checks:
+          - id: "3.4.a"
+            description: DSTI does not exceed 45%; between 40% and 45% a motivated senior-analyst exception is required.
+            kind: deterministic
+            op: at_most
+            field: dsti
+            limit: {param: max_dsti}
+            warn_above: {param: dsti_exception_threshold}
+            on_fail: fail
+
+      - id: "3.5"
+        source: >-
+          The monthly repayment of the requested credit is computed on an annuity basis at the
+          offered rate; where no rate is fixed yet, use the bank's reference rate of 4.0% per annum.
+        checks:
+          - id: "3.5.a"
+            description: Monthly repayment of the requested credit (annuity, offered or reference rate).
+            kind: deterministic
+            op: computed
+            field: credit.new_monthly_payment
+
+      - id: "3.6"
+        source: >-
+          After payment of all monthly credit obligations, the household must retain a minimum free
+          income of €1,200 per month, increased by €250 per dependent person.
+        checks:
+          - id: "3.6.a"
+            description: Free income after all credit obligations meets the household minimum.
+            kind: deterministic
+            op: at_least
+            field: income.free_monthly
+            limit: {field: income.free_required}
+            on_fail: fail
+
+  - id: "4"
+    title: Existing credit and credit history
+    articles:
+      - id: "4.1"
+        source: >-
+          A CKP/BECRIS extract must be present for every applicant and may not be older than one
+          month at the credit decision.
+        checks:
+          - id: "4.1.a"
+            description: A BECRIS extract is present.
+            kind: deterministic
+            op: document_requirement
+            requirement: D5
+          - id: "4.1.b"
+            description: The BECRIS extract is not older than one month at the decision date; otherwise it must be refreshed.
+            kind: deterministic
+            op: is_true
+            field: becris.within_max_age
+            on_fail: fail
+
+      - id: "4.2"
+        source: >-
+          Files showing a registered payment arrear (wanbetaling) that is not regularized are
+          declined. Regularized arrears older than one year may be accepted with a motivated exception.
+        checks:
+          - id: "4.2.a"
+            description: No registered arrear that is not regularized.
+            kind: deterministic
+            op: is_false
+            field: becris.has_unregularized_arrear
+            on_fail: fail
+          - id: "4.2.b"
+            description: No regularized arrear; one older than a year needs a motivated exception, a more recent one is not covered by the policy and goes to the analyst.
+            kind: deterministic
+            op: is_false
+            field: becris.has_regularized_arrear
+            on_fail: warning
+
+      - id: "4.3"
+        source: >-
+          Every credit registered in the CKP/BECRIS extract must also appear in the liabilities
+          declared in the application. Undeclared credits discovered in the extract are treated as
+          a completeness exception and require clarification from the applicant.
+        checks:
+          - id: "4.3.a"
+            description: Every BECRIS credit appears in the declared liabilities.
+            kind: deterministic
+            op: is_true
+            field: liabilities.all_becris_credits_declared
+            on_fail: warning
+
+  - id: "5"
+    title: Property, purpose and own contribution
+    articles:
+      - id: "5.1"
+        source: >-
+          The financed property must be located in Belgium and be identifiable through the purchase
+          deed or purchase agreement (address, cadastral data). Property data stated across documents
+          (address, year of construction, surface) must be consistent; unexplained discrepancies must
+          be clarified before the decision.
+        checks:
+          - id: "5.1.a"
+            description: Property is located in Belgium.
+            kind: deterministic
+            op: equals
+            field: property.country
+            value: BE
+            on_fail: fail
+          - id: "5.1.b"
+            description: Property is identifiable through the deed or purchase agreement (address and cadastral data).
+            kind: deterministic
+            op: present
+            fields: [property.address, property.cadastral_location, property.cadastral_parcel]
+            on_fail: warning
+          - id: "5.1.c"
+            description: Address, year of construction and surface are consistent across documents.
+            kind: deterministic
+            op: consistent
+            fields: [property.address, property.construction_year, property.floor_area_m2]
+            on_fail: warning
+
+      - id: "5.2"
+        source: >-
+          For acquisition credits the loan-to-value ratio may not exceed 90% of the purchase price
+          (excluding costs). First-time buyers may go to 100% by exception.
+        checks:
+          - id: "5.2.a"
+            description: Loan-to-value does not exceed 90%.
+            kind: deterministic
+            op: at_most
+            field: credit.ltv
+            limit: {param: max_ltv}
+            applies_when:
+              - {field: credit.purpose, op: equals, value: acquisition}
+              - {field: applicant.first_time_buyer, op: is_false}
+            on_fail: fail
+          - id: "5.2.b"
+            description: First-time buyer loan-to-value does not exceed 100%; above 90% requires an exception.
+            kind: deterministic
+            op: at_most
+            field: credit.ltv
+            limit: {param: max_ltv_first_time_buyer}
+            warn_above: {param: max_ltv}
+            applies_when:
+              - {field: credit.purpose, op: equals, value: acquisition}
+              - {field: applicant.first_time_buyer, op: is_true}
+            on_fail: fail
+
+      - id: "5.3"
+        source: >-
+          For renovation credits: a. the applicant must be the owner or usufructuary of the
+          property; b. a valid EPC certificate must be present for properties built before 2000,
+          and may not be expired at the date of the application; c. where the EPC score exceeds
+          400 kWh/m²·year, the planned works must include at least one energy-improving measure
+          from the bank's eligible-measures list (insulation, heating installation, glazing,
+          ventilation, solar); d. the requested amount must be plausible in relation to the
+          described works; e. the credit term may not exceed 15 years.
+        checks:
+          - id: "5.3.a"
+            description: Applicant is the owner of the property (buyer on the deed).
+            kind: deterministic
+            op: is_true
+            field: property.owned_by_applicant
+            applies_when:
+              - {field: credit.purpose, op: equals, value: renovation}
+            on_fail: fail
+          - id: "5.3.b.1"
+            description: An EPC certificate is present (property built before 2000).
+            kind: deterministic
+            op: document_requirement
+            requirement: D7
+          - id: "5.3.b.2"
+            description: The EPC was not expired on the application date.
+            kind: deterministic
+            op: is_true
+            field: epc.valid_at_application
+            applies_when:
+              - {field: credit.purpose, op: equals, value: renovation}
+              - {field: property.construction_year, op: less_than, param: epc_required_built_before}
+            on_fail: fail
+          - id: "5.3.c"
+            description: Above 400 kWh/m²·year, the works include at least one eligible energy measure.
+            kind: deterministic
+            op: is_true
+            field: renovation.includes_eligible_measure
+            applies_when:
+              - {field: credit.purpose, op: equals, value: renovation}
+              - {field: epc.energy_score, op: greater_than, param: epc_energy_score_threshold}
+            on_fail: fail
+          - id: "5.3.d.1"
+            description: Requested amount does not exceed the amount found conform for the works.
+            kind: deterministic
+            op: at_most
+            field: credit.amount
+            limit: {field: renovation.approved_amount}
+            applies_when:
+              - {field: credit.purpose, op: equals, value: renovation}
+            on_fail: warning
+          - id: "5.3.d.2"
+            description: Requested amount is plausible in relation to the described works.
+            kind: judgment
+            op: judgment
+            applies_when:
+              - {field: credit.purpose, op: equals, value: renovation}
+            inputs:
+              - credit.amount
+              - renovation.works
+              - renovation.total_investment
+              - renovation.approved_amount
+              - own_funds.declared
+            question: >-
+              Is the requested credit amount plausible in relation to the described works, their
+              total cost and the amount found conform? Report a concern if the amount, the works and
+              the quotes do not fit together.
+          - id: "5.3.e"
+            description: The credit term does not exceed 15 years.
+            kind: deterministic
+            op: at_most
+            field: credit.term_years
+            limit: {param: max_term_renovation_years}
+            applies_when:
+              - {field: credit.purpose, op: equals, value: renovation}
+            on_fail: fail
+
+      - id: "5.4"
+        source: >-
+          The applicant contributes own funds of at least €1,000 or 10% of the total investment,
+          whichever is higher.
+        checks:
+          - id: "5.4.a"
+            description: Own funds are at least the higher of €1,000 and 10% of the total investment.
+            kind: deterministic
+            op: at_least
+            field: own_funds.declared
+            limit: {field: own_funds.required}
+            on_fail: fail
+
+  - id: "6"
+    title: Documentation
+    articles:
+      - id: "6"
+        source: >-
+          Missing documents are reported as completeness findings; the file may be pre-assessed but
+          no offer may be issued while D1–D6 are missing.
+        checks:
+          - id: "6.D1"
+            description: Application form present.
+            kind: deterministic
+            op: document_requirement
+            requirement: D1
+          - id: "6.D1.signed"
+            description: Application form is signed (a signature or e-signature mention is present).
+            kind: deterministic
+            op: present
+            fields: [application.signature]
+            on_fail: warning
+          - id: "6.D2"
+            description: Identity document present.
+            kind: deterministic
+            op: document_requirement
+            requirement: D2
+          - id: "6.D3"
+            description: Payslips present (3).
+            kind: deterministic
+            op: document_requirement
+            requirement: D3
+          - id: "6.D4"
+            description: Personal tax assessment present.
+            kind: deterministic
+            op: document_requirement
+            requirement: D4
+          - id: "6.D5"
+            description: BECRIS extract present.
+            kind: deterministic
+            op: document_requirement
+            requirement: D5
+          - id: "6.D6"
+            description: Purchase agreement or deed present.
+            kind: deterministic
+            op: document_requirement
+            requirement: D6
+          - id: "6.D7"
+            description: EPC certificate present.
+            kind: deterministic
+            op: document_requirement
+            requirement: D7
+          - id: "6.D8"
+            description: Salary-account bank statements present.
+            kind: deterministic
+            op: document_requirement
+            requirement: D8
+          - id: "6.D9"
+            description: Electrical conformity certificate present where required.
+            kind: deterministic
+            op: document_requirement
+            requirement: D9
+          - id: "6.offer"
+            description: No offer may be issued while D1–D6 are missing; the file can only be pre-assessed.
+            kind: deterministic
+            op: is_true
+            field: documents.offer_requirements_met
+            on_fail: fail
+
+  - id: "7"
+    title: Analyst judgment
+    articles:
+      - id: "7.1"
+        source: >-
+          Beyond the criteria above, the analyst forms an overall opinion on the stability of the
+          applicant's financial situation: continuity of employment, the trend of income over the
+          evidenced months, the plausibility of the declared household situation, and any signals
+          of financial stress (salary advances, seizures on the payslip, structurally increasing
+          credit usage).
+        checks:
+          - id: "7.1.a"
+            description: No salary advance or seizure on the payslips.
+            kind: deterministic
+            op: is_false
+            field: payslips.has_salary_advance_or_seizure
+            on_fail: warning
+          - id: "7.1.b"
+            description: Gross pay is stable across the evidenced months (signal threshold is an implementation parameter).
+            kind: deterministic
+            op: at_most
+            field: income.max_monthly_change
+            limit: {param: income_change_signal}
+            on_fail: warning
+          - id: "7.1.c"
+            description: Continuity of employment (signal threshold is an implementation parameter).
+            kind: deterministic
+            op: at_least
+            field: applicant.employment_tenure_years
+            limit: {param: min_employment_tenure_signal}
+            on_fail: warning
+          - id: "7.1.d"
+            description: Overall stability of the applicant's financial situation.
+            kind: judgment
+            op: judgment
+            inputs:
+              - payslips
+              - applicant.employment_start_date
+              - income.max_monthly_change
+              - income.declared_items
+              - household.member_count
+              - applicant.dependents_count
+              - applicant.civil_status
+              - becris.credits
+              - liabilities.declared
+            question: >-
+              Assess the stability of the applicant's financial situation: continuity of employment,
+              the trend of income over the evidenced months, the plausibility of the declared
+              household situation, and signals of financial stress (salary advances, seizures,
+              structurally increasing credit usage). Cite the facts behind every concern.
+
+      - id: "7.2"
+        source: >-
+          Inconsistencies between documents — names, national register numbers, addresses,
+          amounts, dates — must be flagged and either explained or escalated. Fraud signals are
+          escalated immediately to the fraud desk and are never resolved by the analyst alone.
+        checks:
+          - id: "7.2.a"
+            description: All values that must be identical across documents agree.
+            kind: deterministic
+            op: consistent
+            fields: [$all_single_valued]
+            on_fail: warning
+          - id: "7.2.b"
+            description: No fraud signals from the integrity checks; any signal goes to the fraud desk.
+            kind: deterministic
+            op: integrity
+            severity: fraud_signal
+            on_fail: escalate
+          - id: "7.2.c"
+            description: No integrity warnings (document defects to be explained).
+            kind: deterministic
+            op: integrity
+            severity: warning
+            on_fail: warning
+
+      - id: "7.3"
+        source: >-
+          The analyst's conclusion is one of: accept / accept with conditions / refer to Credit
+          Committee / decline, always with a written motivation that references the specific
+          policy articles applied.
+        checks:
+          - id: "7.3.a"
+            description: The conclusion and its motivation belong to the analyst. Credit Review provides findings and evidence only.
+            kind: analyst
+            op: reserved_for_analyst
