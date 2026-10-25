@@ -1,6 +1,6 @@
 # Credit Review for Example Bank — prototype
 
-Reads a mortgage dossier, checks it against Example Bank's credit policy, and shows every
+Reads a mortgage dossier, checks it against Example Bank's credit policy, and reports every
 finding with the evidence behind it. **AI reads, rules decide, analysts conclude.**
 
 > **Sample data only.** The PDFs and reference labels in this repository are synthetic and
@@ -25,28 +25,7 @@ otherwise the schema is put in the prompt.
 
 ## Run
 
-**The page (what the analyst uses):**
-
-```bash
-streamlit run app.py
-```
-
-Choose the policy and the dossier folder in the sidebar, press *Detect document types*, check
-the types, then *Run assessment*. Each finding opens to the policy text, the working and the
-quotes, and any quote can be shown highlighted on its page. *Policy change* reruns the same
-file under another policy version without reading the documents again. *Cached results only*
-never calls a model: use it for the live demo after one full run.
-
-**A policy change (Part B).** `policy/example_bank_v3.3.yaml` is the worked example: the risk
-team adds a rule (5.3.e, renovation credits at most 15 years) and tightens one (5.4, own funds
-10% instead of 2%), with the bank's amended text in `example_bank_credit_policy_extract_v3.3.md`.
-Open *Policy change*, pick v3.3, and press *Show what this change does to the file*: on the
-case dossier exactly two findings change (5.3.e new, not met; 5.4 from documents disagree to
-not met, because both candidate totals now fail). No document is read again. The validator
-refuses a half-done change: a parameter whose value is not in the article text it cites, or a
-rule description still quoting the old number.
-
-**The same steps from the command line:**
+Use the command-line tools to validate policies, extract documents and generate assessments:
 
 ```bash
 # 1. validate the policy configuration
@@ -67,13 +46,22 @@ python -m pytest -q
 
 Every model call is cached under `.credit_review_cache/`, keyed by provider, model, prompt,
 schema and document. A second run is instant and identical. With `CREDIT_REVIEW_LLM_OFFLINE=1`
-no model is ever called — use that for the live demo.
+no model is ever called. Assessment results are written to `runs/latest/assessment.json`.
+Use `--types path/to/types.json` with extraction or assessment to supply confirmed document
+types as a JSON object mapping file names to policy document type IDs.
+
+**Policy changes.** `policy/example_bank_v3.3.yaml` adds rule 5.3.e (renovation credits at
+most 15 years) and tightens 5.4 (own funds 10% instead of 2%). The amended source text is in
+`policy/example_bank_credit_policy_extract_v3.3.md`. Pass `--policy policy/example_bank_v3.3.yaml`
+to the command-line tools to use it. In Python, `credit_review.pipeline.evaluate()` can
+reuse an assessment's documents and extractions under another policy, and `compare()`
+reports the changes. The validator rejects parameters or rule descriptions that disagree
+with their cited policy text.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `app.py`, `.streamlit/` | The page: choose policy and dossier, confirm document types, run, read the findings |
 | `policy/example_bank_v3.2.yaml` | The policy as configuration: documents, fields, parameters, integrity checks, rules |
 | `policy/REVIEW.md` | The interpretation calls a person must confirm before the YAML is approved |
 | `credit_review/policy.py` | Policy schema and validator (references, traceability to the policy text, guardrails) |

@@ -10,4 +10,4 @@ case_brief.md
 case_pack/policy/
 policy/*.pdf
 .vscode/
-__pycache__/
+*.py[cod]
