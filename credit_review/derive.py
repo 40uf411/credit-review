@@ -9,8 +9,9 @@ every result is kept, labelled with the input value it assumes.
 from __future__ import annotations
 
 import itertools
+from collections.abc import Callable
 from datetime import date
-from typing import Any, Callable
+from typing import Any
 
 from pydantic import BaseModel, Field
 

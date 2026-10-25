@@ -5,7 +5,7 @@ mistakes that would silently break an assessment: unknown references,
 untraceable rules, a model allowed to 'pass', impossible consistency checks.
 """
 
-import copy
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -23,7 +23,7 @@ def policy_data() -> dict:
     return yaml.safe_load(POLICY.read_text(encoding="utf-8"))
 
 
-def validate(data: dict, tmp_path: Path, text: list[tuple[str, str]] = ()):
+def validate(data: dict, tmp_path: Path, text: Sequence[tuple[str, str]] = ()):
     """Write a modified policy next to a copy of the source document (with the bank's own
     text edits, if any) and validate it."""
     src = SOURCE.read_text(encoding="utf-8")

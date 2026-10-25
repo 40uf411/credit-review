@@ -80,7 +80,7 @@ class PdfDocument:
 
     # -- images -------------------------------------------------------------
     @staticmethod
-    def _zoom(page: "pymupdf.Page", dpi: int, max_px: int | None) -> "pymupdf.Matrix":
+    def _zoom(page: pymupdf.Page, dpi: int, max_px: int | None) -> pymupdf.Matrix:
         zoom = dpi / 72
         if max_px:
             zoom = min(zoom, max_px / max(page.rect.width, page.rect.height))
@@ -95,7 +95,7 @@ class PdfDocument:
         """JPEG page images, long edge capped, deterministic for a given PyMuPDF version."""
         out = []
         with pymupdf.open(self.path) as doc:
-            for p in list(doc)[:MAX_IMAGE_PAGES]:
+            for p in list(doc)[:MAX_IMAGE_PAGES]:  # pyright: ignore[reportArgumentType]  (stubs omit Document.__iter__)
                 pix = p.get_pixmap(matrix=self._zoom(p, 200, max_px))
                 out.append(pix.tobytes("jpg", jpg_quality=85))
         return out
@@ -191,7 +191,7 @@ def _best_window(needle: str, hay: str) -> tuple[float, int, int]:
 
 
 def _visual_lines(page: pymupdf.Page, page_no: int) -> list[Line]:
-    words = [(w[0], w[1], w[2], w[3], w[4]) for w in page.get_text("words") if w[4].strip()]
+    words = [(float(w[0]), float(w[1]), float(w[2]), float(w[3]), str(w[4])) for w in page.get_text("words") if w[4].strip()]
     if not words:
         return []
     words.sort(key=lambda w: ((w[1] + w[3]) / 2, w[0]))
@@ -220,7 +220,7 @@ def load_pdf(path: str | Path) -> PdfDocument:
     data = path.read_bytes()
     with pymupdf.open(stream=data, filetype="pdf") as doc:
         lines: list[Line] = []
-        for i, page in enumerate(doc, start=1):
+        for i, page in enumerate(doc, start=1):  # pyright: ignore[reportArgumentType]  (stubs omit Document.__iter__)
             lines.extend(_visual_lines(page, i))
         sizes = [(p.rect.width, p.rect.height) for p in doc]
         return PdfDocument(path=path, sha256=hashlib.sha256(data).hexdigest(),

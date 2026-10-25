@@ -1,0 +1,16 @@
+# Review ownership mirrors the ownership lanes in the policy YAML header.
+# With branch protection ("Require review from Code Owners"), a change merges only after its owner approves:
+# the policy's 4-eyes rule enforced by the platform.
+
+# Default: engineering
+*                       @40uf411
+
+# What is assessed (the bank's risk team in a real deployment): policy configuration and source text
+/policy/                @40uf411
+
+# The hand-labelled reference values used to score models
+/golden/                @40uf411
+
+# How it is built and shipped
+/.github/               @40uf411
+/Dockerfile             @40uf411

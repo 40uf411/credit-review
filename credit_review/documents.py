@@ -9,7 +9,7 @@ resolved and duplicates by content (two payslips for the same month) are caught.
 from __future__ import annotations
 
 from collections import Counter
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -57,7 +57,7 @@ def check_documents(policy: Policy, dossier: list[DossierDocument],
 
     for req in policy.required_documents:
         docs = [d for t in req.accepts for d in by_type.get(t, [])]
-        base = dict(id=req.id, description=req.description, source=req.source, accepts=req.accepts,
+        base: dict[str, Any] = dict(id=req.id, description=req.description, source=req.source, accepts=req.accepts,
                     docs=[d.doc for d in docs], blocks_offer=req.blocks_offer)
 
         # does the requirement apply to this file?

@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
+from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -28,7 +28,7 @@ from credit_review.facts import Fact, FactBook, consolidate
 from credit_review.integrity import IntegrityResult, run_integrity
 from credit_review.judge import make_judge
 from credit_review.llm import LLMClient, LLMConfig
-from credit_review.models import ClassificationProposal, DocumentExtraction
+from credit_review.models import DocumentExtraction
 from credit_review.pdf import PdfDocument, list_dossier
 from credit_review.policy import Policy, load_policy
 
@@ -177,11 +177,11 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     report = load_policy(args.policy)
-    if not report.ok:
+    if not report.ok or report.policy is None:
         print("Policy is not valid:\n" + "\n".join(report.errors))
         return 1
     policy = report.policy
-    llm = LLMClient(LLMConfig.from_env(**({"offline": True} if args.offline else {})))
+    llm = LLMClient(LLMConfig.from_env(offline=True) if args.offline else LLMConfig.from_env())
     docs = list_dossier(args.dossier)
     if args.types:
         types = json.loads(Path(args.types).read_text(encoding="utf-8"))

@@ -103,7 +103,7 @@ def make_judge(llm: LLMClient):
         model_outcome = res.data.get("outcome")
         if model_outcome == "concern" and not kept:
             model_outcome = "no_concern_found"           # a concern nobody can verify is not a finding
-        outcome = mapping.get(model_outcome, "analyst_review")
+        outcome = mapping.get(model_outcome or "", "analyst_review")
         by_id = {f["id"]: f for f in facts}
         details = [f"Concern: {c['text']} [cites {', '.join(c['facts'])}: "
                    + "; ".join(by_id[x]['text'][:80] for x in c['facts']) + "]" for c in kept]

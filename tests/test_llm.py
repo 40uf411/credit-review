@@ -6,8 +6,16 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from credit_review.llm import (AnthropicProvider, CacheMiss, LLMClient, LLMConfig, LLMError, LLMRequest,
-                        OpenAICompatProvider, parse_json_text)
+from credit_review.llm import (
+    AnthropicProvider,
+    CacheMiss,
+    LLMClient,
+    LLMConfig,
+    LLMError,
+    LLMRequest,
+    OpenAICompatProvider,
+    parse_json_text,
+)
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 8
 JPEG = b"\xff\xd8\xff\xe0" + b"0" * 8

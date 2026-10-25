@@ -1,5 +1,9 @@
 # Credit Review for Example Bank — prototype
 
+[![CI](https://github.com/40uf411/credit-review/actions/workflows/ci.yml/badge.svg)](https://github.com/40uf411/credit-review/actions/workflows/ci.yml)
+[![Container](https://github.com/40uf411/credit-review/actions/workflows/container.yml/badge.svg)](https://github.com/40uf411/credit-review/actions/workflows/container.yml)
+[![CodeQL](https://github.com/40uf411/credit-review/actions/workflows/codeql.yml/badge.svg)](https://github.com/40uf411/credit-review/actions/workflows/codeql.yml)
+
 Reads a mortgage dossier, checks it against Example Bank's credit policy, and reports every
 finding with the evidence behind it. **AI reads, rules decide, analysts conclude.**
 
@@ -10,10 +14,12 @@ finding with the evidence behind it. **AI reads, rules decide, analysts conclude
 ## Setup
 
 ```bash
-python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+uv sync                                                  # creates .venv from the lockfile (Python 3.12+)
+source .venv/bin/activate                                # Windows: .venv\Scripts\activate
 cp .env.example .env                                     # then choose a provider
 ```
+
+Without uv: `python -m venv .venv && source .venv/bin/activate && pip install -e . pytest`.
 
 **Anthropic API:** set `ANTHROPIC_API_KEY`. Default model `claude-sonnet-5-5`.
 
@@ -44,6 +50,14 @@ python -m credit_review.pipeline case_pack/dossier --decision-date 2026-10-12 --
 python -m pytest -q
 ```
 
+Or in a container (documents mounted read-only, cached model results only):
+
+```bash
+docker build -t credit-review .
+docker run --rm -v "$PWD/case_pack:/data:ro" -e CREDIT_REVIEW_LLM_OFFLINE=1 \
+  credit-review credit-review /data/dossier --decision-date 2026-10-12 --out /tmp/out
+```
+
 Every model call is cached under `.credit_review_cache/`, keyed by provider, model, prompt,
 schema and document. A second run is instant and identical. With `CREDIT_REVIEW_LLM_OFFLINE=1`
 no model is ever called. Assessment results are written to `runs/latest/assessment.json`.
@@ -57,6 +71,27 @@ to the command-line tools to use it. In Python, `credit_review.pipeline.evaluate
 reuse an assessment's documents and extractions under another policy, and `compare()`
 reports the changes. The validator rejects parameters or rule descriptions that disagree
 with their cited policy text.
+
+## Development and CI
+
+```bash
+uv run pytest --cov          # tests with coverage (gate: 80%)
+uv run ruff check .          # lint
+uv run pyright               # types
+uv run pre-commit install    # the same checks before every commit
+```
+
+| Workflow | Runs on | What it enforces |
+|---|---|---|
+| `ci.yml` | push to `main`, PRs | Ruff, Pyright, tests on Python 3.12 and 3.13 with coverage, **every policy YAML validated against its source text**, copyleft-licence check, secret scan |
+| `container.yml` | push to `main`, PRs | Image build, smoke test (CLI, policy validation, non-root user), Trivy image and Dockerfile scans (fixable HIGH/CRITICAL fail), publish to GHCR with SBOM and provenance on `main` |
+| `codeql.yml` | push, PRs, weekly | CodeQL security analysis of the Python code |
+| `dependency-review.yml` | PRs | Blocks new dependencies with high-severity vulnerabilities or copyleft licences |
+
+Dependabot (`.github/dependabot.yml`) proposes weekly grouped updates for Python packages, workflow
+actions and base images, and waits 7 days before adopting a new release. Actions and base images are
+pinned to commit SHAs and digests. `CODEOWNERS` mirrors the ownership lanes in the policy YAML.
+Decisions are recorded in `docs/adr/`.
 
 ## Layout
 
@@ -78,3 +113,6 @@ with their cited policy text.
 | `credit_review/judge.py` | Judgment checks: cited facts only, never 'pass' |
 | `credit_review/pipeline.py` | The full run, and `compare()` for policy changes |
 | `golden/` | Reference values for the case dossier |
+| `.github/` | CI workflows, Dependabot, code owners, PR template |
+| `Dockerfile` | Multi-stage image: locked dependencies, non-root, policy as configuration |
+| `docs/adr/` | Architecture decision records |

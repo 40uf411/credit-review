@@ -8,13 +8,14 @@ signal (escalated under 7.2), a warning, or information.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import date
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from credit_review.derive import _d, _f, _sorted_payslips, add_months
-from credit_review.facts import FactBook, Record
+from credit_review.derive import _d, _f, _sorted_payslips
+from credit_review.facts import FactBook
 from credit_review.models import Evidence
 
 

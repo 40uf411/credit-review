@@ -7,10 +7,15 @@ go to judge.py, and can never pass on their own. The conclusion (7.3) is never
 evaluated.
 """
 
+# Check fields are optional in the schema because each op uses a different subset; the policy
+# validator guarantees the ones an op needs. Pyright cannot see that, so these stay warnings here.
+# pyright: reportArgumentType=warning
+
 from __future__ import annotations
 
 import itertools
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -18,7 +23,7 @@ from credit_review.documents import RequirementStatus
 from credit_review.facts import FactBook, _compare, display
 from credit_review.integrity import IntegrityResult
 from credit_review.models import Evidence
-from credit_review.policy import ALL_SINGLE_VALUED, Article, Check, Limit, Section
+from credit_review.policy import ALL_SINGLE_VALUED, Article, Check, Limit
 
 
 class CandidateOutcome(BaseModel):
@@ -146,7 +151,7 @@ class Engine:
         return results
 
     def check(self, article: Article, c: Check) -> CheckResult:
-        base = dict(id=c.id, article=article.id, description=c.description, kind=c.kind, op=c.op)
+        base: dict[str, Any] = dict(id=c.id, article=article.id, description=c.description, kind=c.kind, op=c.op)
         applies = [self.book.condition(cond) for cond in c.applies_when]
         if False in applies:
             why = next(cond for cond, a in zip(c.applies_when, applies) if a is False)
@@ -191,7 +196,7 @@ class Engine:
         warn_v = self.policy.parameters[warn.param].value if warn and warn.param else None
         sym = {"at_most": "≤", "at_least": "≥", "less_than": "<"}[op]
         cands = []
-        for (v, vb), (lim, lb, lname) in itertools.product(options, limits):
+        for (v, vb), (lim, lb, _lname) in itertools.product(options, limits):
             ok = _compare(v, op, lim)
             outcome = "pass" if ok else c.on_fail
             if ok and warn_v is not None and ((c.warn_above and v > warn_v) or (c.warn_below and v < warn_v)):

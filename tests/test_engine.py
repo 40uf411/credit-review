@@ -2,17 +2,14 @@
 happens when documents change, go missing, or the policy changes (Part B)."""
 
 import copy
-from types import SimpleNamespace as NS
 
 import pytest
-import yaml
 
 from credit_review.documents import DossierDocument
 from credit_review.extract import extract_dossier
 from credit_review.llm import LLMClient, LLMConfig
 from credit_review.pipeline import compare, evaluate
 from credit_review.policy import load_policy
-
 from tests.conftest import ROOT
 
 DECISION = "2026-10-12"
@@ -174,9 +171,11 @@ def test_policy_change_reads_no_document_again(docs, golden, tmp_path):
 
     llm = LLMClient(LLMConfig(model="golden", cache_dir=tmp_path), provider=Counting(golden))
     types = {n: d["doc_type"] for n, d in golden["documents"].items()}
-    extract_dossier(docs, types, load_policy(ROOT / "policy" / "example_bank_v3.2.yaml").policy, llm)
+    v32, v33 = load_policy(ROOT / "policy" / "example_bank_v3.2.yaml").policy, load_policy(V33).policy
+    assert v32 and v33
+    extract_dossier(docs, types, v32, llm)
     first = Counting.calls
-    extract_dossier(docs, types, load_policy(V33).policy, llm)
+    extract_dossier(docs, types, v33, llm)
     assert first > 0 and Counting.calls == first
 
 

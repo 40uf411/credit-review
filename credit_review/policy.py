@@ -66,7 +66,7 @@ class FieldSpec(Strict):
     tolerance_param: str | None = None
 
     @model_validator(mode="after")
-    def _shape(self) -> "FieldSpec":
+    def _shape(self) -> FieldSpec:
         if self.type == "enum" and not self.values:
             raise ValueError("enum fields need 'values'")
         if self.type in ("list", "record") and not self.items:
@@ -95,7 +95,7 @@ class Condition(Strict):
     param: str | None = None
 
     @model_validator(mode="after")
-    def _operand(self) -> "Condition":
+    def _operand(self) -> Condition:
         unary = self.op in ("is_true", "is_false", "present")
         has_operand = self.value is not None or self.param is not None
         if unary and has_operand:
@@ -153,7 +153,7 @@ class Limit(Strict):
     field: str | None = None
 
     @model_validator(mode="after")
-    def _one(self) -> "Limit":
+    def _one(self) -> Limit:
         if (self.param is None) == (self.field is None):
             raise ValueError("a limit references exactly one of 'param' or 'field'")
         return self
@@ -179,7 +179,7 @@ class Check(Strict):
     on_fail: Outcome | None = None
 
     @model_validator(mode="after")
-    def _arguments(self) -> "Check":
+    def _arguments(self) -> Check:
         op = self.op
         need: dict[str, tuple[str, ...]] = {
             "at_most": ("field", "limit", "on_fail"),
@@ -231,7 +231,7 @@ class RunInput(Strict):
     description: str
 
     @model_validator(mode="after")
-    def _from(self) -> "RunInput":
+    def _from(self) -> RunInput:
         if (self.default == "latest_of") != bool(self.from_fields):
             raise ValueError("default 'latest_of' needs from_fields, and only it")
         return self
@@ -326,7 +326,8 @@ def load_policy(path: str | Path) -> ValidationReport:
 
 def _cross_reference(report: ValidationReport) -> None:
     p = report.policy
-    assert p is not None
+    if p is None:
+        return
     err, warn = report.errors.append, report.warnings.append
 
     names = set(p.fields) | set(p.derived)
@@ -436,7 +437,7 @@ def _cross_reference(report: ValidationReport) -> None:
             ref_param(prm, f"integrity {ic.id}")
 
     # checks ---------------------------------------------------------------------
-    for _, art, c in p.checks():
+    for _, _art, c in p.checks():
         where = f"check {c.id}"
         if c.field:
             ref_name(c.field, where)
@@ -566,7 +567,7 @@ def _check_numbers(p: Policy, err) -> None:
         d = p.derived[name]
         return set(d.params) | {x for i in d.inputs for x in params_behind(i, seen)}
 
-    for _, art, c in p.checks():
+    for _, _art, c in p.checks():
         if c.kind != "deterministic":
             continue
         used = {x.param for x in (c.limit, c.warn_above, c.warn_below) if x and x.param}

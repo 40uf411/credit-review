@@ -141,7 +141,8 @@ def consolidate(policy: Policy, extractions: list[DocumentExtraction]) -> dict[s
                 fact.resolved = [fact.candidates[0].value]
             else:
                 tol = policy.parameters[spec.tolerance_param].value if spec.tolerance_param else None
-                ok, merged = _compatible([c.value for c in fact.candidates], spec.type, tol)
+                ok, merged = _compatible([c.value for c in fact.candidates], spec.type,
+                                         tol)  # pyright: ignore[reportArgumentType]  (tolerance parameters are numeric)
                 if ok:
                     fact.status, fact.resolved = "compatible", [merged]
                     fact.note = f"Documents differ in precision only; using {display(merged, spec.type)}."

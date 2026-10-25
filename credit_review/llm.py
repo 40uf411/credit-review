@@ -60,7 +60,7 @@ class LLMConfig(BaseModel):
     label: str = ""                    # how the provider is shown to users
 
     @classmethod
-    def from_env(cls, env_file: str | Path = ".env", **overrides: Any) -> "LLMConfig":
+    def from_env(cls, env_file: str | Path = ".env", **overrides: Any) -> LLMConfig:
         env = dict(_read_env_file(Path(env_file)))
         env.update(os.environ)
         provider = env.get("CREDIT_REVIEW_LLM_PROVIDER", "anthropic").strip().lower()
@@ -127,6 +127,7 @@ class Provider(Protocol):
 
     def complete(self, req: LLMRequest, model: str, max_tokens: int) -> tuple[dict, dict, str, str]:
         """Return (data, usage, mode, raw_text)."""
+        ...
 
 
 # ------------------------------------------------------------------------ helpers
@@ -213,7 +214,7 @@ class _JSONProvider:
     def __init__(self) -> None:
         self.prompt_only: dict[str, str] = {}      # schema id -> why strict decoding was refused
 
-    def complete(self, req: LLMRequest, model: str, max_tokens: int):
+    def complete(self, req: LLMRequest, model: str, max_tokens: int) -> tuple[dict, dict, str, str]:
         sid = _schema_id(req.schema)
         if self.strict_enabled and sid not in self.prompt_only:
             try:
@@ -226,7 +227,7 @@ class _JSONProvider:
 
         text, usage = self._send(req, model, max_tokens, strict=False)
         data, problems = self._read(text, req.schema)
-        if not problems:
+        if data is not None and not problems:
             return data, usage, "prompt", text
         fix = ("Your reply does not match the JSON Schema:\n- " + "\n- ".join(problems)
                + "\nReply again with the complete, corrected JSON object only.")

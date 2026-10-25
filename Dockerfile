@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+
+# Base images are pinned by digest; Dependabot proposes updates.
+FROM ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff AS uv
+FROM python:3.13-slim@sha256:d98cc29d3266e535dd9da1099688d9cb3ca4753813571e071763d17725460962 AS python
+
+# ------------------------------------------------------------------ build: resolve the locked environment
+FROM python AS build
+COPY --from=uv /uv /bin/uv
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PROJECT_ENVIRONMENT=/app/.venv
+WORKDIR /src
+
+# Dependencies first: this layer is rebuilt only when the lockfile changes.
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --no-install-project
+
+COPY README.md ./
+COPY credit_review ./credit_review
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --no-editable
+
+# ------------------------------------------------------------------ runtime: no build tools, no root
+FROM python AS runtime
+RUN groupadd --system --gid 10001 app \
+ && useradd --system --uid 10001 --gid app --home-dir /app --shell /usr/sbin/nologin app
+WORKDIR /app
+
+COPY --from=build --chown=app:app /app/.venv /app/.venv
+# The policy is configuration, read at run time; documents and model caches are mounted, never baked in.
+COPY --chown=app:app policy ./policy
+
+ENV PATH="/app/.venv/bin:${PATH}" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    CREDIT_REVIEW_CACHE_DIR=/tmp/credit_review_cache
+
+USER app
+
+# Example: docker run --rm -v "$PWD/case_pack:/data:ro" -e CREDIT_REVIEW_LLM_OFFLINE=1 \
+#            credit-review credit-review /data/dossier --decision-date 2026-10-12 --out /tmp/out
+CMD ["credit-review", "--help"]
