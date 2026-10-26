@@ -1402,11 +1402,11 @@ sections:
 
       - id: "5.4"
         source: >-
-          The applicant contributes own funds of at least €1,000 or 2% of the total investment,
+          The applicant contributes own funds of at least €1,000 or 10% of the total investment,
           whichever is higher.
         checks:
           - id: "5.4.a"
-            description: Own funds are at least the higher of €1,000 and 2% of the total investment.
+            description: Own funds are at least the higher of €1,000 and 10% of the total investment.
             kind: deterministic
             op: at_least
             field: own_funds.declared
