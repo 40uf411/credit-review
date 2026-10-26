@@ -17,3 +17,13 @@ case_pack/policy/
 policy/*.pdf
 .vscode/
 *.py[cod]
+
+# Terraform: state, local variables and plans stay local; the lock file is committed.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+*.tfplan
+crash.log
+infra/backend.hcl
