@@ -64,7 +64,9 @@ no model is ever called. Assessment results are written to `runs/latest/assessme
 Use `--types path/to/types.json` with extraction or assessment to supply confirmed document
 types as a JSON object mapping file names to policy document type IDs.
 
-**Policy changes.** `policy/example_bank_v3.3.yaml` adds rule 5.3.e (renovation credits at
+**Policy changes.** `python -m credit_review.impact policy/example_bank_v3.2.yaml policy/example_bank_v3.3.yaml`
+reports which checks change outcome on the sample dossier (no model call). CI posts the same report on every policy
+pull request. `policy/example_bank_v3.3.yaml` adds rule 5.3.e (renovation credits at
 most 15 years) and tightens 5.4 (own funds 10% instead of 2%). The amended source text is in
 `policy/example_bank_credit_policy_extract_v3.3.md`. Pass `--policy policy/example_bank_v3.3.yaml`
 to the command-line tools to use it. In Python, `credit_review.pipeline.evaluate()` can
@@ -85,6 +87,7 @@ uv run pre-commit install    # the same checks before every commit
 |---|---|---|
 | `ci.yml` | push to `main`, PRs | Ruff, Pyright, tests on Python 3.12 and 3.13 with coverage, **every policy YAML validated against its source text**, copyleft-licence check, secret scan |
 | `container.yml` | push to `main`, PRs | Image build, smoke test (CLI, policy validation, non-root user), Trivy image and Dockerfile scans (fixable HIGH/CRITICAL fail), publish to GHCR with SBOM and provenance on `main` |
+| `policy-impact.yml` | PRs touching `policy/`, manual | Validates the changed policy, runs the sample dossier under the policy before and after, and posts the checks whose outcome changes as one PR comment |
 | `codeql.yml` | push, PRs, weekly | CodeQL security analysis of the Python code |
 | `dependency-review.yml` | PRs | Blocks new dependencies with high-severity vulnerabilities or copyleft licences |
 
@@ -112,6 +115,7 @@ Decisions are recorded in `docs/adr/`.
 | `credit_review/engine.py` | Every rule: outcome, reason, evidence; conflicts evaluated per candidate value |
 | `credit_review/judge.py` | Judgment checks: cited facts only, never 'pass' |
 | `credit_review/pipeline.py` | The full run, and `compare()` for policy changes |
+| `credit_review/impact.py` | What a policy change does to the sample dossier: the report CI posts on policy PRs |
 | `golden/` | Reference values for the case dossier |
 | `.github/` | CI workflows, Dependabot, code owners, PR template |
 | `Dockerfile` | Multi-stage image: locked dependencies, non-root, policy as configuration |
