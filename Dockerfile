@@ -25,7 +25,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # ------------------------------------------------------------------ runtime: no build tools, no root
 FROM python AS runtime
-RUN groupadd --system --gid 10001 app \
+# pip is not needed at run time (uv built the environment), and it vendors its own copies of urllib3, msgpack and
+# setuptools' pkg_resources, which the image scan flags. Removing it removes them.
+RUN python -m pip uninstall --yes --no-input pip \
+ && groupadd --system --gid 10001 app \
  && useradd --system --uid 10001 --gid app --home-dir /app --shell /usr/sbin/nologin app
 WORKDIR /app
 
