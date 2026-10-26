@@ -35,11 +35,13 @@ WORKDIR /app
 COPY --from=build --chown=app:app /app/.venv /app/.venv
 # The policy is configuration, read at run time; documents and model caches are mounted, never baked in.
 COPY --chown=app:app policy ./policy
+COPY --chown=app:app config ./config
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    CREDIT_REVIEW_CACHE_DIR=/tmp/credit_review_cache
+    CREDIT_REVIEW_CACHE_DIR=/tmp/credit_review_cache \
+    CREDIT_REVIEW_PRICES_FILE=/app/config/model_prices.yaml
 
 USER app
 

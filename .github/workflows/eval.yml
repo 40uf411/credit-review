@@ -1,0 +1,99 @@
+name: Model evaluation
+
+# Score Azure OpenAI deployments on the hand-labelled reference set and compare them: accuracy (text documents
+# and scans separately), cost per dossier, latency. Signs in with OIDC; no key is stored anywhere.
+# Needs repository variables AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID and AZURE_OPENAI_ENDPOINT.
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployments:
+        description: Deployment names to compare, comma-separated
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.13.5"
+
+jobs:
+  plan:
+    name: Deployments
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.split.outputs.matrix }}
+    steps:
+      - id: split
+        env:
+          DEPLOYMENTS: ${{ inputs.deployments }}
+        run: |
+          matrix=$(jq -cn --arg d "$DEPLOYMENTS" '$d | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  eval:
+    name: Evaluate ${{ matrix.deployment }}
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: dev            # the OIDC subject the federated credential trusts
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        deployment: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.13"
+          enable-cache: true
+      - name: Install
+        run: uv sync --locked --no-default-groups
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Evaluate
+        env:
+          CREDIT_REVIEW_LLM_PROVIDER: azure_openai
+          CREDIT_REVIEW_LLM_BASE_URL: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          CREDIT_REVIEW_LLM_MODEL: ${{ matrix.deployment }}
+        run: |
+          out="eval-${CREDIT_REVIEW_LLM_MODEL//[^A-Za-z0-9._-]/_}.json"
+          uv run --no-sync python -m credit_review.model_eval run --fresh --out "$out" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: eval-${{ strategy.job-index }}
+          path: eval-*.json
+          retention-days: 30
+
+  compare:
+    name: Comparison
+    needs: eval
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.13"
+          enable-cache: true
+      - name: Install
+        run: uv sync --locked --no-default-groups
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: eval-*
+          merge-multiple: true
+          path: results
+      - name: Comparison table
+        run: |
+          shopt -s nullglob
+          files=(results/*.json)
+          if [ ${#files[@]} -eq 0 ]; then echo "No results." >> "$GITHUB_STEP_SUMMARY"; exit 1; fi
+          { echo "## Model comparison"; echo; uv run --no-sync python -m credit_review.model_eval table "${files[@]}"; } >> "$GITHUB_STEP_SUMMARY"

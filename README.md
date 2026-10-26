@@ -23,6 +23,11 @@ Without uv: `python -m venv .venv && source .venv/bin/activate && pip install -e
 
 **Anthropic API:** set `ANTHROPIC_API_KEY`. Default model `claude-sonnet-5-5`.
 
+**Azure OpenAI (Microsoft Foundry):** set `CREDIT_REVIEW_LLM_PROVIDER=azure_openai`, the resource endpoint
+in `CREDIT_REVIEW_LLM_BASE_URL` and the deployment name in `CREDIT_REVIEW_LLM_MODEL`. There is no key: it signs in
+with Microsoft Entra ID (`az login` locally, a managed identity in Azure), and needs the *Cognitive Services OpenAI
+User* role on the resource.
+
 **LM Studio (fully local):** load a *vision-capable* model (the three payslips are scans),
 set its context length to 16k or more, start the server (Developer → Start server, port
 1234), and set `CREDIT_REVIEW_LLM_PROVIDER=lmstudio`. Leave `CREDIT_REVIEW_LLM_MODEL` empty to use the
@@ -58,6 +63,12 @@ docker run --rm -v "$PWD/case_pack:/data:ro" -e CREDIT_REVIEW_LLM_OFFLINE=1 \
   credit-review credit-review /data/dossier --decision-date 2026-10-12 --out /tmp/out
 ```
 
+**Comparing models.** `python -m credit_review.model_eval run --fresh --out runs/eval/<model>.json` scores the
+configured model on the reference set (text documents and scans separately), with cost per dossier and latency;
+`python -m credit_review.model_eval table runs/eval/*.json` compares runs. Prices per model are in
+`config/model_prices.yaml`; a model without a price is reported as "n/a", never as free. The `eval.yml` workflow
+does the same for Azure deployments in CI.
+
 Every model call is cached under `.credit_review_cache/`, keyed by provider, model, prompt,
 schema and document. A second run is instant and identical. With `CREDIT_REVIEW_LLM_OFFLINE=1`
 no model is ever called. Assessment results are written to `runs/latest/assessment.json`.
@@ -88,6 +99,7 @@ uv run pre-commit install    # the same checks before every commit
 | `ci.yml` | push to `main`, PRs | Ruff, Pyright, tests on Python 3.12 and 3.13 with coverage, **every policy YAML validated against its source text**, copyleft-licence check, secret scan |
 | `container.yml` | push to `main`, PRs | Image build, smoke test (CLI, policy validation, non-root user), Trivy image and Dockerfile scans (fixable HIGH/CRITICAL fail), publish to GHCR with SBOM and provenance on `main` |
 | `policy-impact.yml` | PRs touching `policy/`, manual | Validates the changed policy, runs the sample dossier under the policy before and after, and posts the checks whose outcome changes as one PR comment |
+| `eval.yml` | manual | Scores Azure OpenAI deployments on the reference set and posts a comparison (OIDC sign-in, no stored key) |
 | `codeql.yml` | push, PRs, weekly | CodeQL security analysis of the Python code |
 | `dependency-review.yml` | PRs | Blocks new dependencies with high-severity vulnerabilities or copyleft licences |
 
@@ -106,7 +118,9 @@ Decisions are recorded in `docs/adr/`.
 | `credit_review/pdf.py` | Text layer as visual lines with positions; quote location; page images |
 | `credit_review/classify.py` | Document type: policy keywords first, model for scans |
 | `credit_review/extract.py` | Policy-driven extraction; code re-parses values and locates every quote |
-| `credit_review/llm.py` | Anthropic + OpenAI-compatible (LM Studio) behind one cached interface |
+| `credit_review/llm.py` | Anthropic, OpenAI-compatible (LM Studio) and Azure OpenAI behind one cached interface |
+| `credit_review/prices.py`, `config/model_prices.yaml` | Cost of each model call from its token usage |
+| `credit_review/model_eval.py` | Score a model on the reference set; compare models |
 | `credit_review/golden.py` | Hand-labelled reference: offline replay and accuracy scoring |
 | `credit_review/documents.py` | Document checklist: present, missing, duplicated (by content, e.g. the same month twice) |
 | `credit_review/facts.py` | Observations pooled per field: agreement, precision differences, conflicts with evidence |

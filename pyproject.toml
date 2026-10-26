@@ -10,6 +10,7 @@ dependencies = [
     "pymupdf>=1.24",
     "anthropic>=0.40",
     "openai>=1.40",
+    "azure-identity>=1.19",
 ]
 
 [project.scripts]
@@ -72,7 +73,7 @@ ignore = [
 combine-as-imports = true
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]   # assert is how pytest works
+"tests/**" = ["S101", "S105", "S106"]   # assert is how pytest works; fake credentials in tests
 
 [tool.pyright]
 include = ["credit_review", "tests"]

@@ -1,0 +1,14 @@
+# Model prices used to report the cost of every model call (credit_review/prices.py).
+# EUR per 1 million tokens, keyed by the model or deployment name that CREDIT_REVIEW_LLM_MODEL uses.
+# A model that is not listed is reported as "n/a", never as free.
+#
+# Source: the Azure OpenAI pricing page for the deployment type in use (Data Zone Standard, EU, or
+# Global Standard). Record the date you checked; prices change.
+#
+# Example:
+#   models:
+#     my-gpt-deployment: {input: 1.80, output: 7.20}
+
+checked: null
+source: https://azure.microsoft.com/pricing/details/cognitive-services/openai-service/
+models: {}

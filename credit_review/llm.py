@@ -1,4 +1,4 @@
-"""One interface, two backends: Anthropic API and any OpenAI-compatible server (LM Studio).
+"""One interface, two backends: Anthropic API and any OpenAI-compatible server (LM Studio, Azure OpenAI).
 
 Every call returns JSON matching a schema, and every result is cached on disk,
 keyed by everything that influences it (provider, model, prompts, schema, image
@@ -7,12 +7,16 @@ and `offline=True` guarantees no network call is made: the demo is reproducible.
 
 Configuration (environment variables or a `.env` file in the working directory):
 
-    CREDIT_REVIEW_LLM_PROVIDER   anthropic | lmstudio | openai          (default: anthropic)
+    CREDIT_REVIEW_LLM_PROVIDER   anthropic | lmstudio | openai | azure_openai   (default: anthropic)
     CREDIT_REVIEW_LLM_MODEL      model id; for LM Studio the loaded model's id
-                          (if empty, the first model the server lists is used)
+                          (if empty, the first model the server lists is used);
+                          for azure_openai the deployment name (required)
     CREDIT_REVIEW_LLM_VISION_MODEL  optional separate model for scanned documents
-    CREDIT_REVIEW_LLM_BASE_URL   default http://localhost:1234/v1 for lmstudio
-    CREDIT_REVIEW_LLM_API_KEY    falls back to ANTHROPIC_API_KEY / OPENAI_API_KEY
+    CREDIT_REVIEW_LLM_BASE_URL   default http://localhost:1234/v1 for lmstudio;
+                          for azure_openai the resource endpoint (https://<name>.openai.azure.com/)
+    CREDIT_REVIEW_LLM_API_KEY    falls back to ANTHROPIC_API_KEY / OPENAI_API_KEY (azure_openai uses no key:
+                          it signs in with Entra ID, e.g. `az login` locally or a managed identity in Azure)
+    CREDIT_REVIEW_LLM_TEMPERATURE  OpenAI-compatible only; empty = not sent (newer models accept only the default)
     CREDIT_REVIEW_LLM_OFFLINE    1 = cache only, never call a model
     CREDIT_REVIEW_CACHE_DIR      default .credit_review_cache
 """
@@ -31,8 +35,11 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel
 
+from credit_review.prices import cost_eur
+
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"
 DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1"
+AZURE_SCOPE = "https://cognitiveservices.azure.com/.default"
 
 
 class LLMError(RuntimeError):
@@ -51,7 +58,9 @@ class LLMConfig(BaseModel):
     vision_model: str = ""
     base_url: str = ""
     api_key: str = ""
-    temperature: float = 0.0           # OpenAI-compatible only; current Claude models fix sampling
+    temperature: float | None = 0.0    # OpenAI-compatible only; None = not sent. Current Claude models fix sampling
+    token_param: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"  # noqa: S105  (a parameter name, not a secret); newer OpenAI models need the latter
+    auth: Literal["key", "entra"] = "key"   # entra: Microsoft Entra ID token instead of an API key (Azure)
     max_tokens: int = 16000           # room for models that think before answering
     timeout: float = 300.0
     cache_dir: Path = Path(".credit_review_cache")
@@ -65,6 +74,19 @@ class LLMConfig(BaseModel):
         env.update(os.environ)
         provider = env.get("CREDIT_REVIEW_LLM_PROVIDER", "anthropic").strip().lower()
         label = provider
+        if provider == "azure_openai":
+            endpoint = env.get("CREDIT_REVIEW_LLM_BASE_URL", "").strip()
+            model = env.get("CREDIT_REVIEW_LLM_MODEL", "").strip()
+            if not endpoint or not model:
+                raise LLMError("azure_openai needs CREDIT_REVIEW_LLM_BASE_URL (the resource endpoint) and "
+                               "CREDIT_REVIEW_LLM_MODEL (the deployment name)")
+            temperature = env.get("CREDIT_REVIEW_LLM_TEMPERATURE", "").strip()
+            values: dict[str, Any] = dict(
+                provider="openai", label=label, model=model, base_url=azure_v1_url(endpoint), api_key="",
+                auth="entra", token_param="max_completion_tokens",  # noqa: S106  (a parameter name)
+                temperature=float(temperature) if temperature else None,
+            )
+            return cls._finish(env, values, overrides)
         if provider == "lmstudio":
             provider = "openai"
         if provider not in ("anthropic", "openai"):
@@ -77,14 +99,24 @@ class LLMConfig(BaseModel):
             api_key = env.get("CREDIT_REVIEW_LLM_API_KEY") or env.get("OPENAI_API_KEY") or "lm-studio"
             base_url = env.get("CREDIT_REVIEW_LLM_BASE_URL") or DEFAULT_LMSTUDIO_URL
             model = env.get("CREDIT_REVIEW_LLM_MODEL", "")
-        values: dict[str, Any] = dict(
-            provider=provider, label=label, model=model, base_url=base_url, api_key=api_key,
+        return cls._finish(env, dict(provider=provider, label=label, model=model, base_url=base_url,
+                                     api_key=api_key), overrides)
+
+    @classmethod
+    def _finish(cls, env: dict[str, str], values: dict[str, Any], overrides: dict[str, Any]) -> LLMConfig:
+        values.update(
             vision_model=env.get("CREDIT_REVIEW_LLM_VISION_MODEL", ""),
             offline=env.get("CREDIT_REVIEW_LLM_OFFLINE", "0").strip().lower() in ("1", "true", "yes"),
             cache_dir=Path(env.get("CREDIT_REVIEW_CACHE_DIR", ".credit_review_cache")),
         )
         values.update(overrides)
         return cls(**values)
+
+
+def azure_v1_url(endpoint: str) -> str:
+    """The Azure OpenAI v1 API base URL for a resource endpoint, whichever form was copied from the portal."""
+    url = endpoint.strip().rstrip("/")
+    return (url if url.endswith("/openai/v1") else url + "/openai/v1") + "/"
 
 
 def _read_env_file(path: Path):
@@ -120,6 +152,7 @@ class LLMResult:
     cached: bool
     usage: dict[str, Any]
     seconds: float
+    cost_eur: float | None = None      # what the call cost when it was made (a cached result costs nothing now)
 
 
 class Provider(Protocol):
@@ -313,10 +346,19 @@ class OpenAICompatProvider(_JSONProvider):
                 import openai
             except ImportError as exc:
                 raise LLMError("pip install openai") from exc
-            client = openai.OpenAI(base_url=config.base_url or None, api_key=config.api_key or "lm-studio",
-                                   timeout=config.timeout, max_retries=1)
+            api_key: Any = config.api_key or "lm-studio"
+            if config.auth == "entra":
+                try:
+                    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+                except ImportError as exc:
+                    raise LLMError("pip install azure-identity") from exc
+                # A token provider, not a key: the SDK asks it for a fresh token before each request.
+                api_key = get_bearer_token_provider(DefaultAzureCredential(), AZURE_SCOPE)
+            client = openai.OpenAI(base_url=config.base_url or None, api_key=api_key,
+                                   timeout=config.timeout, max_retries=3 if config.auth == "entra" else 1)
         self.client = client
         self.temperature = config.temperature
+        self.token_param = config.token_param
         self.strict_enabled = config.structured in ("auto", "json_schema")
         self.allow_fallback = config.structured == "auto"
 
@@ -337,8 +379,10 @@ class OpenAICompatProvider(_JSONProvider):
         if repair:
             messages += [{"role": "assistant", "content": repair[0] or "{}"},
                          {"role": "user", "content": repair[1]}]
-        kwargs: dict[str, Any] = dict(model=model, temperature=self.temperature, max_tokens=max_tokens,
-                                      messages=messages)
+        kwargs: dict[str, Any] = dict(model=model, messages=messages)
+        kwargs[self.token_param] = max_tokens
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
         if strict:
             kwargs["response_format"] = {"type": "json_schema", "json_schema": {
                 "name": req.schema_name, "strict": True, "schema": req.schema}}
@@ -376,6 +420,8 @@ class LLMClient:
 
     def resolve_model(self, needs_vision: bool) -> str:
         model = (self.config.vision_model if needs_vision and self.config.vision_model else self.config.model)
+        if not model and self.config.auth == "entra":
+            raise LLMError("no deployment configured (CREDIT_REVIEW_LLM_MODEL)")
         if not model and isinstance(self.provider, OpenAICompatProvider):
             models = self.provider.list_models()
             if not models:
@@ -410,7 +456,8 @@ class LLMClient:
             entry = json.loads(path.read_text(encoding="utf-8"))
             return LLMResult(data=entry["data"], provider=entry["provider"], model=entry["model"],
                              mode=entry["mode"], cache_key=key, cached=True,
-                             usage=entry.get("usage", {}), seconds=0.0)
+                             usage=entry.get("usage", {}), seconds=0.0,
+                             cost_eur=cost_eur(entry["model"], entry.get("usage", {})))
         if offline:
             raise CacheMiss(f"no cached {req.purpose} result for {req.meta.get('doc', '?')} "
                             f"with {self.config.provider}/{model}; run once online to fill the cache")
@@ -422,11 +469,12 @@ class LLMClient:
         except Exception as exc:
             raise LLMError(f"{self.config.provider} call failed ({type(exc).__name__}): {str(exc)[:400]}") from exc
         seconds = round(time.monotonic() - started, 2)
+        cost = cost_eur(model, usage)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({
             "cache_key": key, "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "provider": self.config.provider, "model": model, "mode": mode, "purpose": req.purpose,
-            "meta": req.meta, "usage": usage, "seconds": seconds, "data": data, "raw_text": raw,
+            "meta": req.meta, "usage": usage, "seconds": seconds, "cost_eur": cost, "data": data, "raw_text": raw,
         }, ensure_ascii=False, indent=2), encoding="utf-8")
         return LLMResult(data=data, provider=self.config.provider, model=model, mode=mode,
-                         cache_key=key, cached=False, usage=usage, seconds=seconds)
+                         cache_key=key, cached=False, usage=usage, seconds=seconds, cost_eur=cost)

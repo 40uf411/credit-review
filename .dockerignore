@@ -1,4 +1,4 @@
-# Only what the image needs: pyproject.toml, uv.lock, README.md, credit_review/, policy/
+# Only what the image needs: pyproject.toml, uv.lock, README.md, credit_review/, policy/, config/
 .git
 .github
 .venv
