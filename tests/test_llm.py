@@ -239,7 +239,8 @@ def test_sdk_errors_become_per_document_errors(tmp_path):
 
 def _clear_llm_env(monkeypatch):
     for k in ("CREDIT_REVIEW_LLM_PROVIDER", "CREDIT_REVIEW_LLM_MODEL", "CREDIT_REVIEW_LLM_BASE_URL",
-              "CREDIT_REVIEW_LLM_API_KEY", "CREDIT_REVIEW_LLM_TEMPERATURE", "OPENAI_API_KEY", "CREDIT_REVIEW_LLM_OFFLINE"):
+              "CREDIT_REVIEW_LLM_API_KEY", "CREDIT_REVIEW_LLM_TEMPERATURE", "OPENAI_API_KEY", "CREDIT_REVIEW_LLM_OFFLINE",
+              "CREDIT_REVIEW_LLM_REASONING_EFFORT"):
         monkeypatch.delenv(k, raising=False)
 
 
@@ -306,3 +307,24 @@ def test_cost_comes_from_usage_and_is_kept_for_cached_results(tmp_path, monkeypa
     config_unpriced = LLMConfig(provider="openai", model="unpriced", cache_dir=tmp_path / "cache2")
     unpriced = LLMClient(config_unpriced, provider=OpenAICompatProvider(config_unpriced, client=FakeOpenAI()))
     assert unpriced.complete(request()).cost_eur is None   # unknown price is "n/a", never 0
+
+
+def test_reasoning_effort_is_sent_and_keys_the_cache_only_when_set(tmp_path, monkeypatch):
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_PROVIDER", "azure_openai")
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_BASE_URL", "https://res.openai.azure.com")
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_MODEL", "my-deployment")
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_REASONING_EFFORT", "low")
+    assert LLMConfig.from_env(tmp_path / "missing.env").reasoning_effort == "low"
+
+    fake = FakeOpenAI()
+    config = LLMConfig(provider="openai", model="m", reasoning_effort="low", cache_dir=tmp_path)
+    OpenAICompatProvider(config, client=fake).complete(request(), "m", 1000)
+    assert fake.calls[0]["reasoning_effort"] == "low"
+    OpenAICompatProvider(LLMConfig(provider="openai"), client=fake).complete(request(), "m", 1000)
+    assert "reasoning_effort" not in fake.calls[1]
+
+    def key(effort):
+        return LLMClient(LLMConfig(provider="openai", model="m", reasoning_effort=effort)).cache_key(request(), "m")
+    assert key("low") != key("medium") != key(None)
+    assert key(None) == key("")                             # unset: the key every earlier cache entry has

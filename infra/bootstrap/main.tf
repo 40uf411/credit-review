@@ -1,14 +1,5 @@
 data "azurerm_client_config" "current" {}
 
-data "azurerm_resource_group" "app" {
-  name = var.app_resource_group_name
-}
-
-data "azurerm_cognitive_account" "foundry" {
-  name                = var.foundry_account_name
-  resource_group_name = var.app_resource_group_name
-}
-
 locals {
   # Storage account names are global; a stable suffix from the subscription keeps reruns idempotent.
   suffix = substr(sha1(var.subscription_id), 0, 6)
@@ -21,6 +12,16 @@ locals {
     env-dev      = "repo:${var.github_repository}:environment:dev"
     env-prod     = "repo:${var.github_repository}:environment:prod"
   }
+}
+
+# ------------------------------------------------------------------ the application's resource group
+# Created here so the GitHub identity can be scoped to it before anything else exists. Everything in it is
+# owned by the main configuration (infra/).
+
+resource "azurerm_resource_group" "app" {
+  name     = "rg-${var.name_prefix}-dev"
+  location = var.location
+  tags     = var.tags
 }
 
 # ------------------------------------------------------------------ remote state
@@ -92,9 +93,16 @@ locals {
       principal = azurerm_user_assigned_identity.github.principal_id
       type      = "ServicePrincipal"
     }
+    # GitHub: read the state resource group, so the main configuration can look up this identity
+    github-tfstate-read = {
+      scope     = azurerm_resource_group.tfstate.id
+      role      = "Reader"
+      principal = azurerm_user_assigned_identity.github.principal_id
+      type      = "ServicePrincipal"
+    }
     # GitHub: create and change the application's resources
     github-app = {
-      scope     = data.azurerm_resource_group.app.id
+      scope     = azurerm_resource_group.app.id
       role      = "Contributor"
       principal = azurerm_user_assigned_identity.github.principal_id
       type      = "ServicePrincipal"
@@ -102,15 +110,8 @@ locals {
     # GitHub: give the application's managed identity its roles. In production this assignment carries an
     # ABAC condition that limits which roles it may hand out.
     github-rbac = {
-      scope     = data.azurerm_resource_group.app.id
+      scope     = azurerm_resource_group.app.id
       role      = "Role Based Access Control Administrator"
-      principal = azurerm_user_assigned_identity.github.principal_id
-      type      = "ServicePrincipal"
-    }
-    # GitHub: call the models (the evaluation workflow)
-    github-models = {
-      scope     = data.azurerm_cognitive_account.foundry.id
-      role      = "Cognitive Services OpenAI User"
       principal = azurerm_user_assigned_identity.github.principal_id
       type      = "ServicePrincipal"
     }
@@ -118,13 +119,6 @@ locals {
     me-state = {
       scope     = azurerm_storage_account.tfstate.id
       role      = "Storage Blob Data Contributor"
-      principal = data.azurerm_client_config.current.object_id
-      type      = null
-    }
-    # You: call the models from your machine (local evaluation runs)
-    me-models = {
-      scope     = data.azurerm_cognitive_account.foundry.id
-      role      = "Cognitive Services OpenAI User"
       principal = data.azurerm_client_config.current.object_id
       type      = null
     }

@@ -17,6 +17,8 @@ Configuration (environment variables or a `.env` file in the working directory):
     CREDIT_REVIEW_LLM_API_KEY    falls back to ANTHROPIC_API_KEY / OPENAI_API_KEY (azure_openai uses no key:
                           it signs in with Entra ID, e.g. `az login` locally or a managed identity in Azure)
     CREDIT_REVIEW_LLM_TEMPERATURE  OpenAI-compatible only; empty = not sent (newer models accept only the default)
+    CREDIT_REVIEW_LLM_REASONING_EFFORT  OpenAI-compatible reasoning models only (e.g. low | medium | high);
+                          empty = not sent, so the model's default applies
     CREDIT_REVIEW_LLM_OFFLINE    1 = cache only, never call a model
     CREDIT_REVIEW_CACHE_DIR      default .credit_review_cache
 """
@@ -61,6 +63,7 @@ class LLMConfig(BaseModel):
     temperature: float | None = 0.0    # OpenAI-compatible only; None = not sent. Current Claude models fix sampling
     token_param: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"  # noqa: S105  (a parameter name, not a secret); newer OpenAI models need the latter
     auth: Literal["key", "entra"] = "key"   # entra: Microsoft Entra ID token instead of an API key (Azure)
+    reasoning_effort: str | None = None     # OpenAI-compatible reasoning models; None = the model's default
     max_tokens: int = 16000           # room for models that think before answering
     timeout: float = 300.0
     cache_dir: Path = Path(".credit_review_cache")
@@ -108,6 +111,7 @@ class LLMConfig(BaseModel):
             vision_model=env.get("CREDIT_REVIEW_LLM_VISION_MODEL", ""),
             offline=env.get("CREDIT_REVIEW_LLM_OFFLINE", "0").strip().lower() in ("1", "true", "yes"),
             cache_dir=Path(env.get("CREDIT_REVIEW_CACHE_DIR", ".credit_review_cache")),
+            reasoning_effort=env.get("CREDIT_REVIEW_LLM_REASONING_EFFORT", "").strip() or None,
         )
         values.update(overrides)
         return cls(**values)
@@ -359,6 +363,7 @@ class OpenAICompatProvider(_JSONProvider):
         self.client = client
         self.temperature = config.temperature
         self.token_param = config.token_param
+        self.reasoning_effort = config.reasoning_effort
         self.strict_enabled = config.structured in ("auto", "json_schema")
         self.allow_fallback = config.structured == "auto"
 
@@ -383,6 +388,8 @@ class OpenAICompatProvider(_JSONProvider):
         kwargs[self.token_param] = max_tokens
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
+        if self.reasoning_effort:
+            kwargs["reasoning_effort"] = self.reasoning_effort
         if strict:
             kwargs["response_format"] = {"type": "json_schema", "json_schema": {
                 "name": req.schema_name, "strict": True, "schema": req.schema}}
@@ -416,7 +423,8 @@ class LLMClient:
         name = c.label or c.provider
         model = c.model or "(first loaded model)"
         vision = f", vision: {c.vision_model}" if c.vision_model else ""
-        return f"{name} · {model}{vision}" + (" · offline (cache only)" if c.offline else "")
+        effort = f" @ {c.reasoning_effort}" if c.reasoning_effort and c.provider == "openai" else ""
+        return f"{name} · {model}{effort}{vision}" + (" · offline (cache only)" if c.offline else "")
 
     def resolve_model(self, needs_vision: bool) -> str:
         model = (self.config.vision_model if needs_vision and self.config.vision_model else self.config.model)
@@ -438,6 +446,9 @@ class LLMClient:
             "model": model, "system": req.system, "prompt": req.prompt, "schema": req.schema,
             "images": [hashlib.sha256(i).hexdigest() for i in req.images],
         }   # max_tokens is deliberately not part of the key: it never changes an answer, only truncates it
+        if self.config.reasoning_effort and self.config.provider == "openai":
+            # Only when set, so every reply cached before this option existed keeps its key.
+            payload["reasoning_effort"] = self.config.reasoning_effort
         return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
     def _cache_path(self, key: str) -> Path:

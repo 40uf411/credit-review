@@ -13,3 +13,11 @@ def test_replayed_reference_scores_full_marks_and_renders(docs, policy, golden, 
     assert result["cost_eur"] is None                       # the replay has no price: "n/a", not free
     text = table([result])
     assert "**100.0%**" in text and "n/a" in text and "noise" in text
+
+
+def test_runs_at_different_reasoning_efforts_are_labelled_apart(docs, policy, golden, golden_llm):
+    types = {name: d["doc_type"] for name, d in golden["documents"].items()}
+    result = summarise(extract_dossier(docs, types, policy, golden_llm), golden, golden_llm.config, 1.0)
+    low, medium = dict(result, reasoning_effort="low"), dict(result, reasoning_effort="medium")
+    text = table([low, medium])
+    assert "`golden-replay @ low`" in text and "`golden-replay @ medium`" in text

@@ -4,6 +4,9 @@
     CREDIT_REVIEW_LLM_PROVIDER=azure_openai CREDIT_REVIEW_LLM_BASE_URL=https://<resource>.openai.azure.com \\
     CREDIT_REVIEW_LLM_MODEL=<deployment> python -m credit_review.model_eval run --fresh --out runs/eval/<deployment>.json
 
+    # the same deployment at another reasoning effort (reasoning models only)
+    ... python -m credit_review.model_eval run --fresh --reasoning-effort low --out runs/eval/<deployment>-low.json
+
     # compare the runs
     python -m credit_review.model_eval table runs/eval/*.json
 
@@ -53,7 +56,8 @@ def summarise(extractions: list[DocumentExtraction], golden: dict[str, Any], con
     costs = [c.cost_eur for c in calls]
     modes = Counter(c.mode for c in calls)
     return {
-        "model": config.model, "provider": config.label or config.provider, "prompt_version": PROMPT_VERSION,
+        "model": config.model, "reasoning_effort": config.reasoning_effort,
+        "provider": config.label or config.provider, "prompt_version": PROMPT_VERSION,
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "accuracy": overall["accuracy"], "matched": overall["match"], "expected": overall["expected"],
         "wrong": overall["mismatch"], "missed": overall["missed"], "extra": overall["extra"],
@@ -79,7 +83,10 @@ def run(args: argparse.Namespace) -> int:
     docs = list_dossier(args.dossier)
     types = {name: d["doc_type"] for name, d in golden["documents"].items()}
     with tempfile.TemporaryDirectory() as fresh_cache:
-        config = LLMConfig.from_env(**({"cache_dir": Path(fresh_cache)} if args.fresh else {}))
+        overrides: dict[str, Any] = {"cache_dir": Path(fresh_cache)} if args.fresh else {}
+        if args.reasoning_effort:
+            overrides["reasoning_effort"] = args.reasoning_effort
+        config = LLMConfig.from_env(**overrides)
         llm = LLMClient(config)
         started = time.monotonic()
         extractions = extract_dossier(docs, types, report.policy, llm, workers=args.workers)
@@ -101,7 +108,8 @@ def table(results: list[dict[str, Any]]) -> str:
     for r in sorted(results, key=lambda r: (-(r["accuracy"] or 0), r["cost_eur"] or 0)):
         cost = "n/a" if r["cost_eur"] is None else f"€ {r['cost_eur']:.4f}"
         latency = "n/a" if r["latency_p50"] is None else f"{r['latency_p50']:.1f} s / {r['latency_p95']:.1f} s"
-        lines.append(f"| `{r['model']}` | **{_pct(r['accuracy'])}** ({r['matched']}/{r['expected']}) "
+        label = r["model"] + (f" @ {r['reasoning_effort']}" if r.get("reasoning_effort") else "")
+        lines.append(f"| `{label}` | **{_pct(r['accuracy'])}** ({r['matched']}/{r['expected']}) "
                      f"| {_pct(r['accuracy_text'])} | {_pct(r['accuracy_scans'])} | {r['wrong']} / {r['missed']} "
                      f"| {_pct(r['repair_rate'])} | {cost} | {latency} | {len(r['errors'])} |")
     lines += ["", f"Reference set: {results[0]['expected'] if results else 0} hand-labelled values; prompt "
@@ -116,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="command", required=True)
     r = sub.add_parser("run", help="extract the sample dossier with the configured model and score it")
     r.add_argument("--fresh", action="store_true", help="ignore cached replies: call the model for every document")
+    r.add_argument("--reasoning-effort", help="reasoning models only, e.g. low | medium | high (default: the model's)")
     r.add_argument("--out", type=Path, help="write the result as JSON")
     r.add_argument("--policy", type=Path, default=POLICY)
     r.add_argument("--dossier", type=Path, default=DOSSIER)

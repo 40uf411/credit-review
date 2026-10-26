@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       deployments:
-        description: Deployment names to compare, comma-separated
+        description: "Comma-separated deployment[:reasoning-effort] entries, e.g. gpt-5.4-mini:low,gpt-5.4-mini:medium"
         required: true
 
 permissions:
@@ -28,11 +28,12 @@ jobs:
         env:
           DEPLOYMENTS: ${{ inputs.deployments }}
         run: |
-          matrix=$(jq -cn --arg d "$DEPLOYMENTS" '$d | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')
+          matrix=$(jq -cn --arg d "$DEPLOYMENTS" '$d | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))
+            | map(split(":") | {deployment: .[0], effort: (.[1] // "")})')
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   eval:
-    name: Evaluate ${{ matrix.deployment }}
+    name: Evaluate ${{ matrix.entry.deployment }} ${{ matrix.entry.effort }}
     needs: plan
     runs-on: ubuntu-latest
     environment: dev            # the OIDC subject the federated credential trusts
@@ -42,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        deployment: ${{ fromJSON(needs.plan.outputs.matrix) }}
+        entry: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
@@ -61,9 +62,11 @@ jobs:
         env:
           CREDIT_REVIEW_LLM_PROVIDER: azure_openai
           CREDIT_REVIEW_LLM_BASE_URL: ${{ vars.AZURE_OPENAI_ENDPOINT }}
-          CREDIT_REVIEW_LLM_MODEL: ${{ matrix.deployment }}
+          CREDIT_REVIEW_LLM_MODEL: ${{ matrix.entry.deployment }}
+          CREDIT_REVIEW_LLM_REASONING_EFFORT: ${{ matrix.entry.effort }}   # empty = the model's default
         run: |
-          out="eval-${CREDIT_REVIEW_LLM_MODEL//[^A-Za-z0-9._-]/_}.json"
+          name="${CREDIT_REVIEW_LLM_MODEL}${CREDIT_REVIEW_LLM_REASONING_EFFORT:+-$CREDIT_REVIEW_LLM_REASONING_EFFORT}"
+          out="eval-${name//[^A-Za-z0-9._-]/_}.json"
           uv run --no-sync python -m credit_review.model_eval run --fresh --out "$out" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

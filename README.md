@@ -66,8 +66,9 @@ docker run --rm -v "$PWD/case_pack:/data:ro" -e CREDIT_REVIEW_LLM_OFFLINE=1 \
 **Comparing models.** `python -m credit_review.model_eval run --fresh --out runs/eval/<model>.json` scores the
 configured model on the reference set (text documents and scans separately), with cost per dossier and latency;
 `python -m credit_review.model_eval table runs/eval/*.json` compares runs. Prices per model are in
-`config/model_prices.yaml`; a model without a price is reported as "n/a", never as free. The `eval.yml` workflow
-does the same for Azure deployments in CI.
+`config/model_prices.yaml`; a model without a price is reported as "n/a", never as free. For reasoning models,
+`--reasoning-effort low|medium|high` compares the same model at different effort. The `eval.yml` workflow does the
+same for Azure deployments in CI, with entries like `gpt-5.4-mini:low,gpt-5.4-mini:medium`.
 
 Every model call is cached under `.credit_review_cache/`, keyed by provider, model, prompt,
 schema and document. A second run is instant and identical. With `CREDIT_REVIEW_LLM_OFFLINE=1`

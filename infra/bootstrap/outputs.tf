@@ -4,10 +4,14 @@ output "github_variables" {
     AZURE_CLIENT_ID       = azurerm_user_assigned_identity.github.client_id
     AZURE_TENANT_ID       = data.azurerm_client_config.current.tenant_id
     AZURE_SUBSCRIPTION_ID = var.subscription_id
-    AZURE_OPENAI_ENDPOINT = data.azurerm_cognitive_account.foundry.endpoint
     TFSTATE_RG            = azurerm_resource_group.tfstate.name
     TFSTATE_ACCOUNT       = azurerm_storage_account.tfstate.name
   }
+}
+
+output "app_resource_group_name" {
+  description = "Resource group the main configuration (infra/) deploys into."
+  value       = azurerm_resource_group.app.name
 }
 
 output "backend_config" {

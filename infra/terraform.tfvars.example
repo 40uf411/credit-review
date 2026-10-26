@@ -1,9 +1,7 @@
-# Copy to terraform.tfvars (gitignored) and fill in. None of these values is a secret.
-subscription_id         = "00000000-0000-0000-0000-000000000000"
-app_resource_group_name = "rg-creditreview-dev"
-foundry_account_name    = "my-foundry-resource"
-deployments = {
-  chat       = "my-chat-deployment"
-  mini       = "my-mini-deployment"
-  embeddings = "text-embedding-3-small"
-}
+# Copy to terraform.tfvars (gitignored) and fill in. Not secrets, but keep them out of the public repo.
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+# Your Entra object ID, so you can call the models from your machine: az ad signed-in-user show --query id -o tsv
+model_user_object_ids = ["00000000-0000-0000-0000-000000000000"]
+
+# Model deployments default to variables.tf; override here only to change capacity or add gpt-5.5 once it has quota.
