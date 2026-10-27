@@ -7,6 +7,8 @@ result is only a proposal: the analyst confirms every type before a run.
 
 from __future__ import annotations
 
+from typing import Any
+
 from credit_review.llm import LLMClient, LLMError, LLMRequest
 from credit_review.models import ClassificationProposal, LLMCallInfo
 from credit_review.pdf import PdfDocument, normalise_for_search
@@ -58,7 +60,7 @@ def _prompt(policy: Policy, doc: PdfDocument) -> str:
 
 
 def classify_document(doc: PdfDocument, policy: Policy, llm: LLMClient | None) -> ClassificationProposal:
-    base = dict(doc=doc.name, sha256=doc.sha256, has_text_layer=doc.has_text_layer)
+    base: dict[str, Any] = dict(doc=doc.name, sha256=doc.sha256, has_text_layer=doc.has_text_layer)
     scores = keyword_scores(doc, policy) if doc.has_text_layer else {}
     ranked = sorted(scores.items(), key=lambda kv: len(kv[1]), reverse=True)
     if ranked and (len(ranked) == 1 or len(ranked[0][1]) > len(ranked[1][1])):
@@ -94,7 +96,8 @@ def classify_document(doc: PdfDocument, policy: Policy, llm: LLMClient | None) -
         confidence=res.data.get("confidence", "low") if doc_type else "none",
         rationale=str(res.data.get("rationale", "")), alternatives=[t for t, _ in ranked],
         llm=LLMCallInfo(provider=res.provider, model=res.model, mode=res.mode, cache_key=res.cache_key,
-                        cached=res.cached, prompt_version=PROMPT_VERSION, usage=res.usage, seconds=res.seconds),
+                        cached=res.cached, prompt_version=PROMPT_VERSION, usage=res.usage, seconds=res.seconds,
+                        cost_eur=res.cost_eur),
     )
 
 

@@ -1,0 +1,115 @@
+name: Policy impact
+
+# On every PR that touches the policy: validate it, run the sample dossier under the policy before and after the
+# change, and post what changes as one comment that is updated on each push. Manual runs compare any two policy files.
+
+on:
+  pull_request:
+    paths: ["policy/**"]
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Policy before the change
+        default: policy/example_bank_v3.2.yaml
+      head:
+        description: Policy after the change
+        default: policy/example_bank_v3.3.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: policy-impact-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.13.5"
+
+jobs:
+  impact:
+    name: Validate and compare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # the sticky comment
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0     # the base branch's policy files are read with git
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.13"
+          enable-cache: true
+      - name: Install
+        run: uv sync --locked --no-default-groups
+
+      - name: Compare (pull request)
+        id: pr
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # The whole policy folder of the base commit, so its YAML is validated against its own source text.
+          mkdir -p "$RUNNER_TEMP/base"
+          git archive "$BASE_SHA" policy | tar -x -C "$RUNNER_TEMP/base"
+          status=0
+          : > impact.md
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue                                  # deleted on the head side
+            if [ -f "$RUNNER_TEMP/base/$f" ]; then base="$RUNNER_TEMP/base/$f"; else base="$f"; fi   # new file: compare with itself
+            uv run --no-sync python -m credit_review.impact "$base" "$f" \
+              --base-label "$f @ base" --head-label "$f @ ${HEAD_SHA:0:7}" --out part.md > /dev/null || status=1
+            cat part.md >> impact.md
+          done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- 'policy/*.yaml')
+          # Only the policy text changed: every YAML that cites it is still checked against the new text.
+          if [ ! -s impact.md ]; then
+            for f in policy/*.yaml; do
+              uv run --no-sync python -m credit_review.impact "$RUNNER_TEMP/base/$f" "$f" \
+                --base-label "$f @ base" --head-label "$f @ ${HEAD_SHA:0:7}" --out part.md > /dev/null || status=1
+              cat part.md >> impact.md
+            done
+          fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Compare (manual)
+        id: manual
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          BASE: ${{ inputs.base }}
+          HEAD: ${{ inputs.head }}
+        run: |
+          status=0
+          uv run --no-sync python -m credit_review.impact "$BASE" "$HEAD" --out impact.md > /dev/null || status=1
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Job summary
+        if: always()
+        run: '[ -f impact.md ] && cat impact.md >> "$GITHUB_STEP_SUMMARY" || true'
+
+      # One comment per PR, edited in place on each push. Fork PRs have a read-only token: summary only.
+      - name: Comment on the PR
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            if (!fs.existsSync('impact.md')) return;
+            const body = fs.readFileSync('impact.md', 'utf8');
+            const marker = '<!-- policy-impact -->';
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const mine = comments.find(c => c.user.type === 'Bot' && c.body.startsWith(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Fail on an invalid policy
+        if: steps.pr.outputs.status == '1' || steps.manual.outputs.status == '1'
+        run: |
+          echo "::error::A policy failed validation. See the job summary or the PR comment."
+          exit 1

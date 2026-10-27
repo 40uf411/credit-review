@@ -1,0 +1,26 @@
+# Only what the image needs: pyproject.toml, uv.lock, README.md, credit_review/, policy/, config/
+.git
+.github
+.venv
+.env
+.env.*
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.ruff_cache
+.coverage
+coverage.xml
+junit.xml
+htmlcov
+dist
+runs
+.credit_review_cache
+case_pack
+golden
+tests
+docs
+infra
+.vscode
+.idea
+*.md
+!README.md

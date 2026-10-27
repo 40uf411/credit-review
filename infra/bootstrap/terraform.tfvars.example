@@ -1,0 +1,3 @@
+# Copy to terraform.tfvars (gitignored) and fill in. Not a secret, but keep it out of the public repo.
+subscription_id = "00000000-0000-0000-0000-000000000000"
+# location      = "swedencentral"

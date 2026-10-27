@@ -6,8 +6,16 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from credit_review.llm import (AnthropicProvider, CacheMiss, LLMClient, LLMConfig, LLMError, LLMRequest,
-                        OpenAICompatProvider, parse_json_text)
+from credit_review.llm import (
+    AnthropicProvider,
+    CacheMiss,
+    LLMClient,
+    LLMConfig,
+    LLMError,
+    LLMRequest,
+    OpenAICompatProvider,
+    parse_json_text,
+)
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 8
 JPEG = b"\xff\xd8\xff\xe0" + b"0" * 8
@@ -225,3 +233,98 @@ def test_sdk_errors_become_per_document_errors(tmp_path):
     client = LLMClient(LLMConfig(model="m", cache_dir=tmp_path), provider=Boom())
     with pytest.raises(LLMError, match="anthropic call failed"):
         client.complete(request())
+
+
+# --- Azure OpenAI -----------------------------------------------------------------
+
+def _clear_llm_env(monkeypatch):
+    for k in ("CREDIT_REVIEW_LLM_PROVIDER", "CREDIT_REVIEW_LLM_MODEL", "CREDIT_REVIEW_LLM_BASE_URL",
+              "CREDIT_REVIEW_LLM_API_KEY", "CREDIT_REVIEW_LLM_TEMPERATURE", "OPENAI_API_KEY", "CREDIT_REVIEW_LLM_OFFLINE",
+              "CREDIT_REVIEW_LLM_REASONING_EFFORT"):
+        monkeypatch.delenv(k, raising=False)
+
+
+@pytest.mark.parametrize("endpoint", ["https://res.openai.azure.com", "https://res.openai.azure.com/",
+                                      "https://res.openai.azure.com/openai/v1/"])
+def test_azure_config_uses_the_v1_endpoint_and_entra_id(tmp_path, monkeypatch, endpoint):
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_PROVIDER", "azure_openai")
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_BASE_URL", endpoint)
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_MODEL", "my-deployment")
+    config = LLMConfig.from_env(tmp_path / "missing.env")
+    assert config.provider == "openai" and config.label == "azure_openai"
+    assert config.base_url == "https://res.openai.azure.com/openai/v1/"
+    assert (config.auth, config.api_key, config.token_param) == ("entra", "", "max_completion_tokens")
+    assert config.temperature is None and config.model == "my-deployment"
+
+
+def test_azure_config_needs_a_deployment_name(tmp_path, monkeypatch):
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_PROVIDER", "azure_openai")
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_BASE_URL", "https://res.openai.azure.com")
+    with pytest.raises(LLMError, match="deployment name"):
+        LLMConfig.from_env(tmp_path / "missing.env")
+
+
+def test_azure_requests_send_max_completion_tokens_and_no_temperature():
+    """Newer OpenAI models reject max_tokens and any temperature but the default with a 400, which the
+    structured-output fallback would otherwise misread as 'schema refused'."""
+    fake = FakeOpenAI()
+    config = LLMConfig(provider="openai", auth="entra", token_param="max_completion_tokens", temperature=None)
+    data, _, mode, _ = OpenAICompatProvider(config, client=fake).complete(request(), "my-deployment", 1000)
+    call = fake.calls[0]
+    assert data == {"x": "ok"} and mode == "json_schema"
+    assert call["max_completion_tokens"] == 1000
+    assert "max_tokens" not in call and "temperature" not in call
+
+
+def test_azure_signs_in_with_a_token_provider_not_a_key(monkeypatch):
+    import azure.identity
+    import openai
+
+    seen = {}
+    monkeypatch.setattr(azure.identity, "DefaultAzureCredential", lambda: "credential")
+    monkeypatch.setattr(azure.identity, "get_bearer_token_provider",
+                        lambda cred, scope: seen.update(cred=cred, scope=scope) or (lambda: "token"))
+    monkeypatch.setattr(openai, "OpenAI", lambda **kw: seen.update(client=kw) or NS())
+    OpenAICompatProvider(LLMConfig(provider="openai", auth="entra", base_url="https://res.openai.azure.com/openai/v1/"))
+    assert seen["cred"] == "credential" and seen["scope"] == "https://cognitiveservices.azure.com/.default"
+    api_key = seen["client"]["api_key"]
+    assert callable(api_key) and api_key() == "token"
+
+
+def test_cost_comes_from_usage_and_is_kept_for_cached_results(tmp_path, monkeypatch):
+    prices = tmp_path / "prices.yaml"
+    prices.write_text("models:\n  m: {input: 2.0, output: 10.0}\n")
+    monkeypatch.setenv("CREDIT_REVIEW_PRICES_FILE", str(prices))
+    fake = FakeOpenAI()                                    # usage: 20 input, 5 output tokens
+    config = LLMConfig(provider="openai", model="m", cache_dir=tmp_path / "cache")
+    client = LLMClient(config, provider=OpenAICompatProvider(config, client=fake))
+    first, again = client.complete(request()), client.complete(request())
+    assert first.cost_eur == again.cost_eur == pytest.approx((20 * 2.0 + 5 * 10.0) / 1_000_000)
+    assert not first.cached and again.cached               # cost of the call when made; nothing paid the second time
+
+    config_unpriced = LLMConfig(provider="openai", model="unpriced", cache_dir=tmp_path / "cache2")
+    unpriced = LLMClient(config_unpriced, provider=OpenAICompatProvider(config_unpriced, client=FakeOpenAI()))
+    assert unpriced.complete(request()).cost_eur is None   # unknown price is "n/a", never 0
+
+
+def test_reasoning_effort_is_sent_and_keys_the_cache_only_when_set(tmp_path, monkeypatch):
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_PROVIDER", "azure_openai")
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_BASE_URL", "https://res.openai.azure.com")
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_MODEL", "my-deployment")
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_REASONING_EFFORT", "low")
+    assert LLMConfig.from_env(tmp_path / "missing.env").reasoning_effort == "low"
+
+    fake = FakeOpenAI()
+    config = LLMConfig(provider="openai", model="m", reasoning_effort="low", cache_dir=tmp_path)
+    OpenAICompatProvider(config, client=fake).complete(request(), "m", 1000)
+    assert fake.calls[0]["reasoning_effort"] == "low"
+    OpenAICompatProvider(LLMConfig(provider="openai"), client=fake).complete(request(), "m", 1000)
+    assert "reasoning_effort" not in fake.calls[1]
+
+    def key(effort):
+        return LLMClient(LLMConfig(provider="openai", model="m", reasoning_effort=effort)).cache_key(request(), "m")
+    assert key("low") != key("medium") != key(None)
+    assert key(None) == key("")                             # unset: the key every earlier cache entry has

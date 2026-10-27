@@ -17,12 +17,13 @@ import argparse
 import json
 import re
 import sys
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from credit_review.llm import LLMClient, LLMConfig, LLMError, LLMRequest
-from credit_review.models import ClassificationProposal, DocumentExtraction, Evidence, LLMCallInfo, Observation
+from credit_review.models import DocumentExtraction, Evidence, LLMCallInfo, Observation
 from credit_review.parsing import CODE_PARSEABLE, ParseError, comparable, parse_value
 from credit_review.pdf import PdfDocument, list_dossier, normalise_for_search
 from credit_review.policy import FieldSpec, ItemSpec, Policy, load_policy
@@ -275,7 +276,7 @@ def extract_document(doc: PdfDocument, doc_type: str, policy: Policy, llm: LLMCl
         return result
     result.llm = LLMCallInfo(provider=res.provider, model=res.model, mode=res.mode, cache_key=res.cache_key,
                              cached=res.cached, prompt_version=PROMPT_VERSION, usage=res.usage,
-                             seconds=res.seconds)
+                             seconds=res.seconds, cost_eur=res.cost_eur)
     result.observations, result.not_found = interpret(res.data, fields, doc, doc_type, vision)
     flags = [f for o in result.observations for f in o.flags]
     result.flags = sorted({f"{f} x{flags.count(f)}" for f in flags})
@@ -330,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     report = load_policy(args.policy)
-    if not report.ok:
+    if not report.ok or report.policy is None:
         print("Policy is not valid:\n" + "\n".join(report.errors))
         return 1
     policy = report.policy
@@ -340,7 +341,7 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["CREDIT_REVIEW_LLM_PROVIDER"] = args.provider
     if args.model:
         os.environ["CREDIT_REVIEW_LLM_MODEL"] = args.model
-    config = LLMConfig.from_env(**({"offline": True} if args.offline else {}))
+    config = LLMConfig.from_env(offline=True) if args.offline else LLMConfig.from_env()
     llm = LLMClient(config)
     print(f"Model: {llm.describe()}\n")
 
