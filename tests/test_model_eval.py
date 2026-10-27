@@ -50,3 +50,22 @@ def test_table_expands_glob_patterns_itself(tmp_path, capsys):
     assert out.index("@ medium") < out.index("@ low")          # sorted by accuracy
     with pytest.raises(SystemExit, match="no result files"):
         main(["table", str(tmp_path / "nothing-*.json")])
+
+
+def test_results_written_before_the_cost_rename_still_compare(tmp_path, capsys):
+    old = {k: v for k, v in _row("gpt-5.4-mini", "low", 183).items() if k != "cost"} | {"cost_eur": 0.0123}
+    (tmp_path / "old.json").write_text(json.dumps(old))
+    (tmp_path / "new.json").write_text(json.dumps(_row("gpt-5.4-mini", "medium", 185) | {"cost": 0.02, "currency": "USD"}))
+    assert main(["table", str(tmp_path / "*.json")]) == 0
+    out = capsys.readouterr().out
+    assert "0.0123 EUR" in out and "0.0200 USD" in out
+
+
+def test_reasoning_effort_is_refused_where_it_would_not_be_sent(tmp_path, monkeypatch, capsys):
+    """Anthropic ignores reasoning_effort, so a run labelled "@ low" would claim something that never happened."""
+    monkeypatch.setenv("CREDIT_REVIEW_LLM_PROVIDER", "anthropic")
+    monkeypatch.delenv("CREDIT_REVIEW_LLM_REASONING_EFFORT", raising=False)
+    out = tmp_path / "result.json"
+    assert main(["run", "--reasoning-effort", "low", "--out", str(out)]) == 2
+    assert "applies to OpenAI / Azure OpenAI" in capsys.readouterr().out
+    assert not out.exists()

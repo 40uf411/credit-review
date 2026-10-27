@@ -68,6 +68,18 @@ def _percentile(values: list[float], q: float) -> float | None:
     return ordered[min(len(ordered) - 1, max(0, round(q * len(ordered)) - 1))]
 
 
+def applied_effort(config: LLMConfig) -> str | None:
+    """The reasoning effort actually sent: only OpenAI-compatible providers send one."""
+    return config.reasoning_effort if config.provider == "openai" else None
+
+
+def _cost(r: dict[str, Any]) -> tuple[float | None, str]:
+    """Cost and currency of a result; files written before the rename carry `cost_eur`."""
+    if "cost" in r:
+        return r["cost"], r.get("currency", "")
+    return r.get("cost_eur"), "EUR"
+
+
 def summarise(extractions: list[DocumentExtraction], golden: dict[str, Any], config: LLMConfig,
               wall_seconds: float) -> dict[str, Any]:
     rows = evaluate(extractions, golden)
@@ -79,7 +91,7 @@ def summarise(extractions: list[DocumentExtraction], golden: dict[str, Any], con
     costs = [c.cost for c in calls]
     modes = Counter(c.mode for c in calls)
     return {
-        "model": config.model, "reasoning_effort": config.reasoning_effort,
+        "model": config.model, "reasoning_effort": applied_effort(config),
         "provider": config.label or config.provider, "prompt_version": PROMPT_VERSION,
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "accuracy": overall["accuracy"], "matched": overall["match"], "expected": overall["expected"],
@@ -111,6 +123,10 @@ def run(args: argparse.Namespace) -> int:
         if args.reasoning_effort:
             overrides["reasoning_effort"] = args.reasoning_effort
         config = LLMConfig.from_env(**overrides)
+        if config.reasoning_effort and applied_effort(config) is None:
+            print(f"Reasoning effort applies to OpenAI / Azure OpenAI models; this run uses {config.label or config.provider}. "
+                  "Drop --reasoning-effort (and CREDIT_REVIEW_LLM_REASONING_EFFORT), or set CREDIT_REVIEW_LLM_PROVIDER.")
+            return 2
         llm = LLMClient(config)
         started = time.monotonic()
         extractions = extract_dossier(docs, types, report.policy, llm, workers=args.workers)
@@ -130,8 +146,9 @@ def _pct(x: float | None) -> str:
 def table(results: list[dict[str, Any]]) -> str:
     lines = ["| Model | Accuracy | Text documents | Scans | Wrong / missed | Repair rounds | Cost per dossier | "
              "Latency p50 / p95 | Errors |", "|---|---|---|---|---|---|---|---|---|"]
-    for r in sorted(results, key=lambda r: (-(r["accuracy"] or 0), r["cost"] or 0)):
-        cost = "n/a" if r["cost"] is None else f"{r['cost']:.4f} {r.get('currency', '')}".strip()
+    for r in sorted(results, key=lambda r: (-(r["accuracy"] or 0), _cost(r)[0] or 0)):
+        amount, unit = _cost(r)
+        cost = "n/a" if amount is None else f"{amount:.4f} {unit}".strip()
         latency = "n/a" if r["latency_p50"] is None else f"{r['latency_p50']:.1f} s / {r['latency_p95']:.1f} s"
         label = r["model"] + (f" @ {r['reasoning_effort']}" if r.get("reasoning_effort") else "")
         lines.append(f"| `{label}` | **{_pct(r['accuracy'])}** ({r['matched']}/{r['expected']}) "
