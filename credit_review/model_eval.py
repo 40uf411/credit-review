@@ -2,13 +2,15 @@
 
     # one model (here an Azure OpenAI deployment; signs in with `az login` or a managed identity)
     CREDIT_REVIEW_LLM_PROVIDER=azure_openai CREDIT_REVIEW_LLM_BASE_URL=https://<resource>.openai.azure.com \\
-    CREDIT_REVIEW_LLM_MODEL=<deployment> python -m credit_review.model_eval run --fresh --out runs/eval/<deployment>.json
+    CREDIT_REVIEW_LLM_MODEL=<deployment> python -m credit_review.model_eval run --fresh
 
     # the same deployment at another reasoning effort (reasoning models only)
-    ... python -m credit_review.model_eval run --fresh --reasoning-effort low --out runs/eval/<deployment>-low.json
+    ... python -m credit_review.model_eval run --fresh --reasoning-effort low
 
-    # compare the runs
-    python -m credit_review.model_eval table runs/eval/*.json
+Each run is written to runs/eval/<model>[-<effort>].json unless --out says otherwise.
+
+    # compare the runs (the pattern is expanded here, so it works in PowerShell too)
+    python -m credit_review.model_eval table "runs/eval/*.json"
 
 Document types come from the reference labels, so only extraction is measured. Scanned documents
 (read from page images) and text documents are scored separately. --fresh calls the model for every
@@ -18,7 +20,9 @@ document instead of reusing cached replies, which is what latency and cost shoul
 from __future__ import annotations
 
 import argparse
+import glob
 import json
+import re
 import sys
 import tempfile
 import time
@@ -36,6 +40,24 @@ from credit_review.pdf import list_dossier
 from credit_review.policy import load_policy
 
 POLICY = Path(__file__).resolve().parents[1] / "policy" / "example_bank_v3.2.yaml"
+RESULTS = Path("runs") / "eval"
+
+
+def default_out(model: str, reasoning_effort: str | None) -> Path:
+    """One file per model and effort, so a second run never overwrites a different one."""
+    name = model + (f"-{reasoning_effort}" if reasoning_effort else "")
+    return RESULTS / (re.sub(r"[^A-Za-z0-9._-]", "_", name) + ".json")
+
+
+def expand(patterns: list[str]) -> list[Path]:
+    """Expand glob patterns ourselves: PowerShell and cmd pass `*.json` through unexpanded."""
+    paths: list[Path] = []
+    for pattern in patterns:
+        matches = sorted(glob.glob(pattern)) if any(c in pattern for c in "*?[") else [pattern]
+        if not matches:
+            raise SystemExit(f"no result files match {pattern!r}")
+        paths += [Path(m) for m in matches]
+    return paths
 
 
 def _percentile(values: list[float], q: float) -> float | None:
@@ -91,10 +113,11 @@ def run(args: argparse.Namespace) -> int:
         started = time.monotonic()
         extractions = extract_dossier(docs, types, report.policy, llm, workers=args.workers)
         result = summarise(extractions, golden, config, time.monotonic() - started)
-    if args.out:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    out = args.out or default_out(config.model, config.reasoning_effort)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     print(table([result]))
+    print(f"\nWritten to {out}")
     return 0 if not result["errors"] else 1
 
 
@@ -125,17 +148,17 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("run", help="extract the sample dossier with the configured model and score it")
     r.add_argument("--fresh", action="store_true", help="ignore cached replies: call the model for every document")
     r.add_argument("--reasoning-effort", help="reasoning models only, e.g. low | medium | high (default: the model's)")
-    r.add_argument("--out", type=Path, help="write the result as JSON")
+    r.add_argument("--out", type=Path, help="where to write the result (default: runs/eval/<model>[-<effort>].json)")
     r.add_argument("--policy", type=Path, default=POLICY)
     r.add_argument("--dossier", type=Path, default=DOSSIER)
     r.add_argument("--golden", type=Path, default=GOLDEN)
     r.add_argument("--workers", type=int, default=4)
     t = sub.add_parser("table", help="compare result files as a markdown table")
-    t.add_argument("results", nargs="+", type=Path)
+    t.add_argument("results", nargs="+", help="result files or glob patterns, e.g. \"runs/eval/*.json\"")
     args = ap.parse_args(argv)
     if args.command == "run":
         return run(args)
-    print(table([json.loads(p.read_text(encoding="utf-8")) for p in args.results]))
+    print(table([json.loads(p.read_text(encoding="utf-8")) for p in expand(args.results)]))
     return 0
 
 
