@@ -15,7 +15,7 @@ def test_replayed_reference_scores_full_marks_and_renders(docs, policy, golden, 
     assert result["accuracy"] == 1.0 and result["wrong"] == result["missed"] == 0
     assert result["accuracy_scans"] == 1.0 and result["accuracy_text"] == 1.0
     assert result["calls"] == len(types) and result["errors"] == {}
-    assert result["cost_eur"] is None                       # the replay has no price: "n/a", not free
+    assert result["cost"] is None                       # the replay has no price: "n/a", not free
     text = table([result])
     assert "**100.0%**" in text and "n/a" in text and "noise" in text
 
@@ -31,7 +31,7 @@ def test_runs_at_different_reasoning_efforts_are_labelled_apart(docs, policy, go
 def _row(model, effort, matched):
     return {"model": model, "reasoning_effort": effort, "accuracy": matched / 186, "matched": matched, "expected": 186,
             "accuracy_text": 1.0, "accuracy_scans": 1.0, "wrong": 186 - matched, "missed": 0, "repair_rate": 0.0,
-            "cost_eur": None, "latency_p50": 7.0, "latency_p95": 16.0, "errors": {}, "prompt_version": "extract-v2"}
+            "cost": None, "latency_p50": 7.0, "latency_p95": 16.0, "errors": {}, "prompt_version": "extract-v2"}
 
 
 def test_each_model_and_effort_gets_its_own_result_file():

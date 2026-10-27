@@ -38,6 +38,7 @@ from credit_review.llm import LLMClient, LLMConfig
 from credit_review.models import DocumentExtraction
 from credit_review.pdf import list_dossier
 from credit_review.policy import load_policy
+from credit_review.prices import currency
 
 POLICY = Path(__file__).resolve().parents[1] / "policy" / "example_bank_v3.2.yaml"
 RESULTS = Path("runs") / "eval"
@@ -75,7 +76,7 @@ def summarise(extractions: list[DocumentExtraction], golden: dict[str, Any], con
     by_method = {m: score([r for r in rows if method.get(r["doc"]) == m]) for m in ("text", "vision")}
     calls = [e.llm for e in extractions if e.llm]
     fresh = [c for c in calls if not c.cached]
-    costs = [c.cost_eur for c in calls]
+    costs = [c.cost for c in calls]
     modes = Counter(c.mode for c in calls)
     return {
         "model": config.model, "reasoning_effort": config.reasoning_effort,
@@ -87,7 +88,8 @@ def summarise(extractions: list[DocumentExtraction], golden: dict[str, Any], con
         "calls": len(calls), "cached_calls": len(calls) - len(fresh), "modes": dict(modes),
         "repair_rate": round(modes.get("prompt+repair", 0) / len(calls), 3) if calls else None,
         # cost of reading the dossier once, whether or not this run paid it (cached replies keep their cost)
-        "cost_eur": round(sum(c for c in costs if c is not None), 4) if costs and None not in costs else None,
+        "cost": round(sum(c for c in costs if c is not None), 4) if costs and None not in costs else None,
+        "currency": currency(),
         "latency_p50": _percentile([c.seconds for c in fresh], 0.50),
         "latency_p95": _percentile([c.seconds for c in fresh], 0.95),
         "wall_seconds": round(wall_seconds, 1),
@@ -128,8 +130,8 @@ def _pct(x: float | None) -> str:
 def table(results: list[dict[str, Any]]) -> str:
     lines = ["| Model | Accuracy | Text documents | Scans | Wrong / missed | Repair rounds | Cost per dossier | "
              "Latency p50 / p95 | Errors |", "|---|---|---|---|---|---|---|---|---|"]
-    for r in sorted(results, key=lambda r: (-(r["accuracy"] or 0), r["cost_eur"] or 0)):
-        cost = "n/a" if r["cost_eur"] is None else f"€ {r['cost_eur']:.4f}"
+    for r in sorted(results, key=lambda r: (-(r["accuracy"] or 0), r["cost"] or 0)):
+        cost = "n/a" if r["cost"] is None else f"{r['cost']:.4f} {r.get('currency', '')}".strip()
         latency = "n/a" if r["latency_p50"] is None else f"{r['latency_p50']:.1f} s / {r['latency_p95']:.1f} s"
         label = r["model"] + (f" @ {r['reasoning_effort']}" if r.get("reasoning_effort") else "")
         lines.append(f"| `{label}` | **{_pct(r['accuracy'])}** ({r['matched']}/{r['expected']}) "

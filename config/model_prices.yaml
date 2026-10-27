@@ -1,14 +1,14 @@
 # Model prices used to report the cost of every model call (credit_review/prices.py).
-# EUR per 1 million tokens, keyed by the model or deployment name that CREDIT_REVIEW_LLM_MODEL uses.
-# A model that is not listed is reported as "n/a", never as free.
+# Per 1 million tokens, in `currency`, keyed by the deployment name that CREDIT_REVIEW_LLM_MODEL uses.
+# A model that is not listed is reported as "n/a", never as free. Prices are kept in the currency
+# they are published in; no exchange rate is guessed.
 #
-# Source: the Azure OpenAI pricing page for the deployment type in use (Data Zone Standard, EU, or
-# Global Standard). Record the date you checked; prices change.
-#
-# Example:
-#   models:
-#     my-gpt-deployment: {input: 1.80, output: 7.20}
+# Source: Azure OpenAI pricing page, standard (pay-as-you-go) column, for the deployment type in use.
+# Cached-input prices are not applied yet: the cost is an upper bound when prompt caching kicks in.
 
-checked: null
-source: https://azure.microsoft.com/pricing/details/cognitive-services/openai-service/
-models: {}
+currency: USD
+checked: 2026-10-27
+source: https://azure.microsoft.com/pricing/details/azure-openai/
+models:
+  gpt-5.4-mini: {input: 0.83, output: 4.95}      # Data Zone (EU); Global is 0.75 / 4.50
+  # gpt-5.5: {input: ..., output: ...}            # add with the deployment once quota is granted

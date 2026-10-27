@@ -301,12 +301,12 @@ def test_cost_comes_from_usage_and_is_kept_for_cached_results(tmp_path, monkeypa
     config = LLMConfig(provider="openai", model="m", cache_dir=tmp_path / "cache")
     client = LLMClient(config, provider=OpenAICompatProvider(config, client=fake))
     first, again = client.complete(request()), client.complete(request())
-    assert first.cost_eur == again.cost_eur == pytest.approx((20 * 2.0 + 5 * 10.0) / 1_000_000)
+    assert first.cost == again.cost == pytest.approx((20 * 2.0 + 5 * 10.0) / 1_000_000)
     assert not first.cached and again.cached               # cost of the call when made; nothing paid the second time
 
     config_unpriced = LLMConfig(provider="openai", model="unpriced", cache_dir=tmp_path / "cache2")
     unpriced = LLMClient(config_unpriced, provider=OpenAICompatProvider(config_unpriced, client=FakeOpenAI()))
-    assert unpriced.complete(request()).cost_eur is None   # unknown price is "n/a", never 0
+    assert unpriced.complete(request()).cost is None   # unknown price is "n/a", never 0
 
 
 def test_reasoning_effort_is_sent_and_keys_the_cache_only_when_set(tmp_path, monkeypatch):
