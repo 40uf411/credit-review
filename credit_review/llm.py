@@ -37,7 +37,7 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel
 
-from credit_review.prices import cost_eur
+from credit_review.prices import call_cost
 
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"
 DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1"
@@ -156,7 +156,7 @@ class LLMResult:
     cached: bool
     usage: dict[str, Any]
     seconds: float
-    cost_eur: float | None = None      # what the call cost when it was made (a cached result costs nothing now)
+    cost: float | None = None      # what the call cost when it was made (a cached result costs nothing now)
 
 
 class Provider(Protocol):
@@ -468,7 +468,7 @@ class LLMClient:
             return LLMResult(data=entry["data"], provider=entry["provider"], model=entry["model"],
                              mode=entry["mode"], cache_key=key, cached=True,
                              usage=entry.get("usage", {}), seconds=0.0,
-                             cost_eur=cost_eur(entry["model"], entry.get("usage", {})))
+                             cost=call_cost(entry["model"], entry.get("usage", {})))
         if offline:
             raise CacheMiss(f"no cached {req.purpose} result for {req.meta.get('doc', '?')} "
                             f"with {self.config.provider}/{model}; run once online to fill the cache")
@@ -480,12 +480,12 @@ class LLMClient:
         except Exception as exc:
             raise LLMError(f"{self.config.provider} call failed ({type(exc).__name__}): {str(exc)[:400]}") from exc
         seconds = round(time.monotonic() - started, 2)
-        cost = cost_eur(model, usage)
+        cost = call_cost(model, usage)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({
             "cache_key": key, "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "provider": self.config.provider, "model": model, "mode": mode, "purpose": req.purpose,
-            "meta": req.meta, "usage": usage, "seconds": seconds, "cost_eur": cost, "data": data, "raw_text": raw,
+            "meta": req.meta, "usage": usage, "seconds": seconds, "cost": cost, "data": data, "raw_text": raw,
         }, ensure_ascii=False, indent=2), encoding="utf-8")
         return LLMResult(data=data, provider=self.config.provider, model=model, mode=mode,
-                         cache_key=key, cached=False, usage=usage, seconds=seconds, cost_eur=cost)
+                         cache_key=key, cached=False, usage=usage, seconds=seconds, cost=cost)

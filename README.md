@@ -63,9 +63,11 @@ docker run --rm -v "$PWD/case_pack:/data:ro" -e CREDIT_REVIEW_LLM_OFFLINE=1 \
   credit-review credit-review /data/dossier --decision-date 2026-10-12 --out /tmp/out
 ```
 
-**Comparing models.** `python -m credit_review.model_eval run --fresh --out runs/eval/<model>.json` scores the
-configured model on the reference set (text documents and scans separately), with cost per dossier and latency;
-`python -m credit_review.model_eval table runs/eval/*.json` compares runs. Prices per model are in
+**Comparing models.** `python -m credit_review.model_eval run --fresh` scores the
+configured model on the reference set (text documents and scans separately), with cost per dossier and latency.
+Each run is saved as `runs/eval/<model>[-<effort>].json`, and
+`python -m credit_review.model_eval table "runs/eval/*.json"` compares them (the pattern is expanded by the tool,
+so it works in PowerShell too). Prices per model are in
 `config/model_prices.yaml`; a model without a price is reported as "n/a", never as free. For reasoning models,
 `--reasoning-effort low|medium|high` compares the same model at different effort. The `eval.yml` workflow does the
 same for Azure deployments in CI, with entries like `gpt-5.4-mini:low,gpt-5.4-mini:medium`.

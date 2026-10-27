@@ -97,7 +97,7 @@ def classify_document(doc: PdfDocument, policy: Policy, llm: LLMClient | None) -
         rationale=str(res.data.get("rationale", "")), alternatives=[t for t, _ in ranked],
         llm=LLMCallInfo(provider=res.provider, model=res.model, mode=res.mode, cache_key=res.cache_key,
                         cached=res.cached, prompt_version=PROMPT_VERSION, usage=res.usage, seconds=res.seconds,
-                        cost_eur=res.cost_eur),
+                        cost=res.cost),
     )
 
 
