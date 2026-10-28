@@ -144,6 +144,34 @@ API key, pick the sample or upload a dossier. It shares the API's model cache, s
 assess there once the deploy test has read it. One replica, always on: a Streamlit session lives in one replica's
 memory.
 
+**Monitoring.** All three apps send OpenTelemetry traces to Application Insights; nothing in them holds a document, a
+question or an answer.
+- *Traffic:* HTTP requests per app (the API and the assistant), with failures and p95 latency. The analyst page is a
+  websocket app, so its runs show as `assess` spans.
+- *Model usage:* one `llm <purpose>` span per model call: model, input and output tokens, the input tokens served
+  from Azure's prompt cache, cost, and whether our response cache answered it.
+- *The assistant:* one `chat turn` span per question, with its outcome (`ok` or the refusal code) and, for a
+  withheld answer, which citation check failed on which chunk.
+- *Azure's side:* Foundry and Prompt Shields request logs (status codes, 429s, latency) in Log Analytics.
+
+The workbook **Credit review: traffic and models** (Application Insights → Workbooks) puts these on one page.
+The same numbers by hand, in Application Insights → Logs:
+
+```kusto
+dependencies
+| where name startswith "llm "
+| summarize calls = count(), from_response_cache = countif(tostring(customDimensions["credit_review.cached"]) == "true"),
+            input_tokens = sum(toint(customDimensions["gen_ai.usage.input_tokens"])),
+            prompt_cached_tokens = sum(toint(customDimensions["gen_ai.usage.cache_read.input_tokens"])),
+            cost_usd = sum(todouble(customDimensions["credit_review.cost"])) by app = cloud_RoleName, name
+```
+
+**Two caches.** Our response cache (Blob, keyed by the full input) answers a repeated call outright: cost 0. Azure's
+prompt cache serves the unchanged start of a prompt of 1,024+ tokens at a lower price (priced at a tenth of
+input in `config/model_prices.yaml`; check the official page); the prompts put
+their fixed part (instructions, field list, schema) first and the document last, so calls on the same document type
+share it. Short prompts (the assistant's topic and rewrite checks) are below the threshold and never hit it.
+
 The assessment runs as a background task in the service; why that is acceptable here, and what replaces it in
 production, is in `docs/adr/0002-container-apps.md`. Uploads expire after 30 days. Setup steps are in
 `infra/README.md`.

@@ -13,11 +13,15 @@ import secrets
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from opentelemetry import trace
+
 from assistant.guards import MESSAGES, GuardResult, Guards
 from assistant.memory import ConversationStore
 from assistant.models import Answer, Chunk, Citation, Conversation, Turn
 from assistant.retriever import Retriever
 from credit_review.llm import LLMClient, LLMRequest
+
+tracer = trace.get_tracer(__name__)
 
 PROMPT_VERSION = "answer-v2"
 TOP_K = 5
@@ -103,6 +107,16 @@ class Chat:
         return max(0, self.guards.max_messages - conversation.user_messages)
 
     def ask(self, conversation: Conversation, text: str) -> Reply:
+        """One turn, traced as a `chat turn` span: its outcome code and counts, never the text."""
+        with tracer.start_as_current_span("chat turn") as span:
+            reply = self._ask(conversation, text, span)
+            span.set_attributes({"assistant.code": reply.code, "assistant.refused": reply.refused,
+                                 "assistant.citations": len(reply.citations),
+                                 "assistant.remaining_messages": reply.remaining_messages,
+                                 "assistant.prompt_version": PROMPT_VERSION})
+            return reply
+
+    def _ask(self, conversation: Conversation, text: str, span: trace.Span) -> Reply:
         check = self.guards.check_input(conversation, text)
         if check.refused:
             return self._refuse(conversation, text, check)
@@ -110,6 +124,7 @@ class Chat:
         try:
             question, countries = self.rewrite(conversation, text)
             chunks = self.retriever.search(question, self.k, countries)
+            span.set_attributes({"assistant.countries": ",".join(countries) or "-", "assistant.chunks": len(chunks)})
             if not chunks:
                 return self._finish(conversation, text, Reply(MESSAGES["no_citation"], refused=True, code="no_sources"))
             canary = self.new_canary()
@@ -118,6 +133,8 @@ class Chat:
             return self._refuse(conversation, text, GuardResult(False, "unavailable", MESSAGES["unavailable"]))
 
         verdict = self.guards.check_output(conversation, answer, chunks, canary)
+        if verdict.detail:
+            span.set_attribute("assistant.withheld", verdict.detail)      # which check, which chunk; no text
         if verdict.refused:
             return self._finish(conversation, text, Reply(verdict.message, refused=True, code=verdict.code))
         return self._finish(conversation, text, Reply(answer.text, citations=answer.citations))

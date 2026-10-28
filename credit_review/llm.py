@@ -22,7 +22,12 @@ Configuration (environment variables or a `.env` file in the working directory):
     CREDIT_REVIEW_LLM_OFFLINE    1 = cache only, never call a model
     CREDIT_REVIEW_CACHE_DIR      default .credit_review_cache (the API keeps its cache in Blob instead; see storage.py)
 
-Every call is traced (OpenTelemetry): model, tokens, cost and whether the cache answered. Nothing is
+Two caches, both measured. Our response cache (above) answers a repeated call outright, at no cost. The
+provider's prompt cache serves the unchanged start of a long prompt at a lower price: prompts put the fixed
+part first (system text, field list, schema) and the document last, so calls on the same document type share it.
+
+Every call is traced (OpenTelemetry): model, tokens (also prompt-cached), cost and whether our cache answered.
+Nothing is
 exported unless telemetry is set up (credit_review.telemetry), so the CLI and tests are unaffected.
 """
 
@@ -49,6 +54,9 @@ tracer = trace.get_tracer(__name__)
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"
 DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1"
 AZURE_SCOPE = "https://cognitiveservices.azure.com/.default"
+# What every call's usage records. cached_input_tokens is the part of input_tokens the provider served from its
+# prompt (prefix) cache: automatic on Azure OpenAI for prompts of 1,024+ tokens whose start is unchanged.
+USAGE_KEYS = ("input_tokens", "output_tokens", "cached_input_tokens")
 
 
 class LLMError(RuntimeError):
@@ -279,7 +287,7 @@ class _JSONProvider:
         data2, problems2 = self._read(text2, req.schema)
         if data2 is None:
             raise LLMError("reply was not valid JSON, also after a repair request: " + "; ".join(problems2[:3]))
-        usage = {k: (usage.get(k) or 0) + (usage2.get(k) or 0) for k in ("input_tokens", "output_tokens")}
+        usage = {k: (usage.get(k) or 0) + (usage2.get(k) or 0) for k in USAGE_KEYS}
         return data2, usage, "prompt+repair", text2
 
     @staticmethod
@@ -341,8 +349,11 @@ class AnthropicProvider(_JSONProvider):
             raise LLMError("reply was cut off at max_tokens; raise LLMConfig.max_tokens")
         text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
         u = getattr(resp, "usage", None)
-        return text, {"input_tokens": getattr(u, "input_tokens", None),
-                      "output_tokens": getattr(u, "output_tokens", None)}
+        cached = getattr(u, "cache_read_input_tokens", None) or 0          # Anthropic counts these apart
+        created = getattr(u, "cache_creation_input_tokens", None) or 0
+        tokens_in = getattr(u, "input_tokens", None)
+        return text, {"input_tokens": None if tokens_in is None else tokens_in + cached + created,
+                      "output_tokens": getattr(u, "output_tokens", None), "cached_input_tokens": cached}
 
 
 # ------------------------------------------------------- OpenAI-compatible (LM Studio)
@@ -405,8 +416,12 @@ class OpenAICompatProvider(_JSONProvider):
         if getattr(choice, "finish_reason", None) == "length":
             raise LLMError("reply was cut off at max_tokens; raise max_tokens or the server context length")
         u = getattr(resp, "usage", None)
+        details = getattr(u, "prompt_tokens_details", None)
         return choice.message.content or "", {"input_tokens": getattr(u, "prompt_tokens", None),
-                                              "output_tokens": getattr(u, "completion_tokens", None)}
+                                              "output_tokens": getattr(u, "completion_tokens", None),
+                                              # Azure/OpenAI prompt caching: the part of the input served from
+                                              # the provider's prefix cache (prompts of 1,024+ tokens), billed lower
+                                              "cached_input_tokens": getattr(details, "cached_tokens", None) or 0}
 
 
 # ------------------------------------------------------------------------- client
@@ -470,6 +485,7 @@ class LLMClient:
                 "gen_ai.system": self.config.label or self.config.provider, "gen_ai.request.model": result.model,
                 "gen_ai.usage.input_tokens": result.usage.get("input_tokens") or 0,
                 "gen_ai.usage.output_tokens": result.usage.get("output_tokens") or 0,
+                "gen_ai.usage.cache_read.input_tokens": result.usage.get("cached_input_tokens") or 0,
                 "credit_review.purpose": req.purpose, "credit_review.doc": str(req.meta.get("doc", "")),
                 "credit_review.cached": result.cached, "credit_review.mode": result.mode,
                 "credit_review.seconds": result.seconds,

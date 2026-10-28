@@ -21,6 +21,7 @@ DEFAULT_PRICES = Path(__file__).resolve().parents[1] / "config" / "model_prices.
 class Price(BaseModel):
     input: float                 # per 1M input tokens, in the file's currency
     output: float                # per 1M output tokens
+    cached_input: float | None = None   # per 1M input tokens served from the provider's prompt cache; None = input
 
 
 def _path(path: str | Path | None) -> str:
@@ -51,4 +52,7 @@ def call_cost(model: str, usage: dict[str, Any], prices: dict[str, Price] | None
     tokens_in, tokens_out = usage.get("input_tokens"), usage.get("output_tokens")
     if price is None or tokens_in is None or tokens_out is None:
         return None
-    return round((tokens_in * price.input + tokens_out * price.output) / 1_000_000, 6)
+    cached = min(usage.get("cached_input_tokens") or 0, tokens_in)      # part of tokens_in, never more
+    cached_price = price.input if price.cached_input is None else price.cached_input
+    return round(((tokens_in - cached) * price.input + cached * cached_price + tokens_out * price.output)
+                 / 1_000_000, 6)

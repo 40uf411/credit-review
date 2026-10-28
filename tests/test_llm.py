@@ -79,7 +79,7 @@ def test_anthropic_uses_structured_output_and_sends_images_first():
     content = call["messages"][0]["content"]
     assert content[0]["type"] == "image" and content[-1] == {"type": "text", "text": "read this"}
     assert "temperature" not in call                      # not accepted by current Claude models
-    assert usage == {"input_tokens": 11, "output_tokens": 7}
+    assert usage == {"input_tokens": 11, "output_tokens": 7, "cached_input_tokens": 0}
 
 
 def test_anthropic_falls_back_to_prompted_json_when_schema_is_refused():
@@ -113,7 +113,7 @@ def test_a_reply_missing_required_keys_gets_one_repair_request():
     repair = fake.calls[2]["messages"]
     assert repair[1] == {"role": "assistant", "content": '{"y": 1}'}
     assert "$.x: missing" in repair[2]["content"]
-    assert usage == {"input_tokens": 22, "output_tokens": 14}
+    assert usage == {"input_tokens": 22, "output_tokens": 14, "cached_input_tokens": 0}
 
 
 def test_a_reply_that_is_never_json_is_an_error():
@@ -307,6 +307,30 @@ def test_cost_comes_from_usage_and_is_kept_for_cached_results(tmp_path, monkeypa
     config_unpriced = LLMConfig(provider="openai", model="unpriced", cache_dir=tmp_path / "cache2")
     unpriced = LLMClient(config_unpriced, provider=OpenAICompatProvider(config_unpriced, client=FakeOpenAI()))
     assert unpriced.complete(request()).cost is None   # unknown price is "n/a", never 0
+
+
+def test_prompt_cached_input_is_recorded_and_priced_lower(tmp_path, monkeypatch):
+    prices = tmp_path / "prices.yaml"
+    prices.write_text("models:\n  m: {input: 2.0, output: 10.0, cached_input: 0.2}\n  n: {input: 2.0, output: 10.0}\n")
+    monkeypatch.setenv("CREDIT_REVIEW_PRICES_FILE", str(prices))
+
+    class Cached(FakeOpenAI):                              # 2,000 input tokens, 1,500 of them from the prompt cache
+        def create(self, **kw):
+            reply = super().create(**kw)
+            reply.usage = NS(prompt_tokens=2000, completion_tokens=5, prompt_tokens_details=NS(cached_tokens=1500))
+            return reply
+
+    for model, expected in (("m", 500 * 2.0 + 1500 * 0.2 + 5 * 10.0), ("n", 2000 * 2.0 + 5 * 10.0)):
+        config = LLMConfig(provider="openai", model=model, cache_dir=tmp_path / model)
+        result = LLMClient(config, provider=OpenAICompatProvider(config, client=Cached())).complete(request())
+        assert result.usage["cached_input_tokens"] == 1500 and result.usage["input_tokens"] == 2000
+        assert result.cost == pytest.approx(expected / 1_000_000)     # without a cached price: priced as input
+
+
+def test_a_reply_without_cache_details_counts_no_cached_tokens(tmp_path):
+    config = LLMConfig(provider="openai", model="m", cache_dir=tmp_path)
+    usage = LLMClient(config, provider=OpenAICompatProvider(config, client=FakeOpenAI())).complete(request()).usage
+    assert usage["cached_input_tokens"] == 0
 
 
 def test_reasoning_effort_is_sent_and_keys_the_cache_only_when_set(tmp_path, monkeypatch):

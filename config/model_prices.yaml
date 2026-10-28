@@ -4,11 +4,14 @@
 # they are published in; no exchange rate is guessed.
 #
 # Source: Azure OpenAI pricing page, standard (pay-as-you-go) column, for the deployment type in use.
-# Cached-input prices are not applied yet: the cost is an upper bound when prompt caching kicks in.
+# cached_input: the price of input tokens served from the provider's prompt cache (Azure OpenAI caches the
+# unchanged start of prompts of 1,024+ tokens automatically). Without it, cached tokens are priced as input.
 
 currency: USD
 checked: 2026-10-27
 source: https://azure.microsoft.com/pricing/details/azure-openai/
 models:
-  gpt-5.4-mini: {input: 0.83, output: 4.95}      # Data Zone (EU); Global is 0.75 / 4.50
+  # Data Zone (EU); Global is 0.75 / 4.50. cached_input is 10% of input, the GPT-5 family's ratio; the official
+  # page showed no Data Zone cached figure on 2026-10-28 (third-party listings give 0.0825-0.09). Check it there.
+  gpt-5.4-mini: {input: 0.83, output: 4.95, cached_input: 0.083}
   # gpt-5.5: {input: ..., output: ...}            # quota requested and denied (Oct 2026); add if it is granted
