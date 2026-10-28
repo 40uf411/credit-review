@@ -121,19 +121,22 @@ PAGE_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Cache-Control": "no-cache",
 }
-PAGE_FILES = {"chat.js": "text/javascript", "chat.css": "text/css"}
 
 
+# One fixed route per file: no part of a file path comes from the request.
 @app.get("/", include_in_schema=False)
 def page() -> FileResponse:
     return FileResponse(WEB / "chat.html", media_type="text/html", headers=PAGE_HEADERS)
 
 
-@app.get("/web/{name}", include_in_schema=False)
-def page_file(name: str) -> FileResponse:
-    if name not in PAGE_FILES:
-        raise HTTPException(404, "not found")
-    return FileResponse(WEB / name, media_type=PAGE_FILES[name], headers=PAGE_HEADERS)
+@app.get("/web/chat.js", include_in_schema=False)
+def page_script() -> FileResponse:
+    return FileResponse(WEB / "chat.js", media_type="text/javascript", headers=PAGE_HEADERS)
+
+
+@app.get("/web/chat.css", include_in_schema=False)
+def page_style() -> FileResponse:
+    return FileResponse(WEB / "chat.css", media_type="text/css", headers=PAGE_HEADERS)
 
 
 @app.get("/healthz", include_in_schema=False)
