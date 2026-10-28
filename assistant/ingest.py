@@ -28,7 +28,7 @@ import httpx
 import yaml
 
 from assistant.models import Chunk
-from assistant.shields import MAX_CHARS as SHIELDS_MAX_CHARS
+from assistant.shields import MAX_CHARS as SHIELDS_MAX_CHARS, MAX_DOCUMENTS as SHIELDS_MAX_DOCUMENTS
 
 MANIFEST = Path(__file__).with_name("corpus") / "manifest.yaml"
 CHUNK_CHARS = 1500
@@ -191,7 +191,8 @@ def read_document(doc: Document, data: bytes) -> list[Chunk]:
 
 
 def scan(chunks: Sequence[Chunk], shields: Any) -> tuple[list[Chunk], list[str]]:
-    """Prompt Shields document scan, in batches under the service's size limit. Flagged chunks are left out."""
+    """Prompt Shields document scan, in batches within the service's limits (5 documents, 10K characters).
+    Flagged chunks are left out."""
     kept: list[Chunk] = []
     flagged: list[str] = []
     batch: list[Chunk] = []
@@ -204,7 +205,8 @@ def scan(chunks: Sequence[Chunk], shields: Any) -> tuple[list[Chunk], list[str]]
             batch.clear()
 
     for c in chunks:
-        if batch and sum(len(b.text) for b in batch) + len(c.text) > SHIELDS_MAX_CHARS:
+        if batch and (len(batch) == SHIELDS_MAX_DOCUMENTS
+                      or sum(len(b.text) for b in batch) + len(c.text) > SHIELDS_MAX_CHARS):
             flush()
         batch.append(c)
     flush()

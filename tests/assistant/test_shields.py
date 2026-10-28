@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from assistant.shields import MAX_CHARS, PromptShields, ShieldsError
+from assistant.shields import MAX_CHARS, MAX_DOCUMENTS, PromptShields, ShieldsError
 
 
 def shields(handler):
@@ -68,3 +68,16 @@ def test_text_over_the_service_limit_is_an_error_before_any_call():
     with pytest.raises(ShieldsError):
         shields(lambda r: calls.append(r) or reply(False)(r)).analyze("x" * (MAX_CHARS + 1))
     assert calls == []
+
+
+def test_more_documents_than_the_service_accepts_is_an_error_before_any_call():
+    calls = []
+    with pytest.raises(ShieldsError, match="documents"):
+        shields(lambda r: calls.append(r) or reply(False)(r)).analyze("q", ["d"] * (MAX_DOCUMENTS + 1))
+    assert calls == []
+
+
+def test_an_http_error_names_the_status_and_azures_code():
+    body = {"error": {"code": "InvalidRequestBody", "message": "Too many documents."}}
+    with pytest.raises(ShieldsError, match="HTTP 400: InvalidRequestBody Too many documents"):
+        shields(lambda r: httpx.Response(400, json=body)).analyze("question")
