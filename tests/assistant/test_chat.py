@@ -145,3 +145,39 @@ def test_a_withheld_answer_records_which_check_failed(tmp_path, spans):
     attributes = spans.get_finished_spans()[0].attributes or {}
     assert attributes["assistant.code"] == "bad_citation"
     assert attributes["assistant.withheld"] == "not_verbatim, chunk nl-thk-0003"
+
+
+def answers(*replies):
+    """An answer handler that gives each reply in turn: the first answer, then the repair."""
+    queue = list(replies)
+    return lambda req: queue.pop(0)
+
+
+def test_a_misquote_gets_one_repair_and_the_corrected_answer_is_shown(tmp_path, spans):
+    wrong = cited(quote="The mortgage may be at most 100 procent of the value of the home")      # translated
+    model = Model(answer=answers(wrong, cited()))
+    chat, store = make_chat(tmp_path, model)
+    reply = chat.ask(store.create("u1"), "Maximale hypotheek waarde woning?")
+    assert not reply.refused and reply.citations[0].chunk_id == "nl-thk-0003"
+    assert model.purposes() == ["topic", "rewrite", "answer", "answer"]
+    repair = [r for r in model.requests if r.purpose == "answer"][1]
+    assert "<correction>" in repair.prompt and '"nl-thk-0003"' in repair.prompt
+    assert "at most 100 procent of the value" in repair.prompt              # the model's own quote, to fix
+    attributes = spans.get_finished_spans()[0].attributes or {}
+    assert attributes["assistant.repaired"] is True and attributes["assistant.code"] == "ok"
+    assert attributes["assistant.withheld"] == "not_verbatim, chunk nl-thk-0003"   # the first failure stays visible
+
+
+def test_a_second_misquote_is_withheld(tmp_path, spans):
+    wrong = cited(quote="a sentence that is in no source at all")
+    chat, store = make_chat(tmp_path, Model(answer=answers(wrong, wrong)))
+    reply = chat.ask(store.create("u1"), "Maximale hypotheek waarde woning?")
+    assert reply.refused and reply.code == "bad_citation"
+    assert (spans.get_finished_spans()[0].attributes or {})["assistant.repaired"] is False
+
+
+def test_a_leaked_canary_is_never_repaired(tmp_path):
+    model = Model(answer=cited(text=f"My marker is {CANARY}"))
+    chat, store = make_chat(tmp_path, model)
+    reply = chat.ask(store.create("u1"), "Maximale hypotheek waarde woning?")
+    assert reply.code == "canary_leak" and model.purposes().count("answer") == 1

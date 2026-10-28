@@ -56,6 +56,8 @@ class GuardResult:
     code: str            # "ok", or a key of MESSAGES
     message: str = ""    # what the user sees; "" when allowed
     detail: str = ""     # for the logs only, never shown: which check failed (no user or model text)
+    # For the chat's one repair request only, never logged: (chunk id, reason, the model's quote) per failed citation.
+    failures: tuple[tuple[str, str, str], ...] = ()
 
     @property
     def refused(self) -> bool:
@@ -65,8 +67,8 @@ class GuardResult:
 OK = GuardResult(True, "ok")
 
 
-def refuse(code: str, detail: str = "") -> GuardResult:
-    return GuardResult(False, code, MESSAGES[code], detail)
+def refuse(code: str, detail: str = "", failures: tuple[tuple[str, str, str], ...] = ()) -> GuardResult:
+    return GuardResult(False, code, MESSAGES[code], detail, failures)
 
 
 # ------------------------------------------------------------------ 1. limits (no external call)
@@ -185,7 +187,16 @@ def _normalise(text: str) -> str:
     text = re.sub(r"[‘’‚′]", "'", text)
     text = re.sub(r"[“”„″]", '"', text)
     text = re.sub(r"[‐-―]", "-", text)
+    text = re.sub(r"\s+%", "%", text)                                 # "100 %" and "100%" are the same figure
     return re.sub(r"\s+", " ", text).strip()
+
+
+# What a model puts around a quote without changing it: quote marks, a closing full stop, an ellipsis at either end.
+_QUOTE_ENDS = re.compile(r"""^(?:[\s"'«»(\[]|\.\.\.|…)+|(?:[\s"'«».,;:)\]]|\.\.\.|…)+$""")
+
+
+def _normalise_quote(text: str) -> str:
+    return _QUOTE_ENDS.sub("", _normalise(text))
 
 
 def check_output(answer: Answer, retrieved: Sequence[Chunk], canary: str) -> GuardResult:
@@ -196,15 +207,20 @@ def check_output(answer: Answer, retrieved: Sequence[Chunk], canary: str) -> Gua
     if not answer.citations:
         return refuse("no_citation")
     chunks = {c.id: _normalise(c.text) for c in retrieved}
+    failures: list[tuple[str, str, str]] = []
     for citation in answer.citations:
-        quote = _normalise(citation.quote)
+        quote = _normalise_quote(citation.quote)
         if citation.chunk_id not in chunks:
-            return refuse("bad_citation", "unknown_chunk")
-        if len(quote) < MIN_QUOTE_CHARS:
-            return refuse("bad_citation", f"too_short, chunk {citation.chunk_id}")
-        if quote not in chunks[citation.chunk_id]:
-            return refuse("bad_citation", f"not_verbatim, chunk {citation.chunk_id}")
-    return OK
+            failures.append((citation.chunk_id, "unknown_chunk", citation.quote))
+        elif len(quote) < MIN_QUOTE_CHARS:
+            failures.append((citation.chunk_id, "too_short", citation.quote))
+        elif quote not in chunks[citation.chunk_id]:
+            failures.append((citation.chunk_id, "not_verbatim", citation.quote))
+    if not failures:
+        return OK
+    # The log names the check and the retrieved chunk; an unknown id is the model's text, so it is not repeated.
+    detail = "; ".join(reason if reason == "unknown_chunk" else f"{reason}, chunk {cid}" for cid, reason, _ in failures)
+    return refuse("bad_citation", detail, tuple(failures))
 
 
 # ------------------------------------------------------------------ the guards, as one dependency for the chat
@@ -232,8 +248,16 @@ class Guards:
         return OK
 
     def check_output(self, conversation: Conversation, answer: Answer, retrieved: Sequence[Chunk],
-                     canary: str) -> GuardResult:
+                     canary: str, final: bool = True) -> GuardResult:
+        """final=False: the caller may still ask the model once more, so a failure is logged by log_withheld (or as a
+        retry) rather than here."""
         result = check_output(answer, retrieved, canary)
         if result.refused:
-            log.warning("answer withheld: %s (%s; conversation %s)", result.code, result.detail or "-", conversation.id)
+            if final:
+                self.log_withheld(conversation, result)
+            elif result.code == "bad_citation":
+                log.warning("citation failed, asking again: %s (conversation %s)", result.detail, conversation.id)
         return result
+
+    def log_withheld(self, conversation: Conversation, result: GuardResult) -> None:
+        log.warning("answer withheld: %s (%s; conversation %s)", result.code, result.detail or "-", conversation.id)
