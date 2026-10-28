@@ -161,6 +161,18 @@ curl -H "X-API-Key: $KEY" -H "X-User-Id: alice" -H "Content-Type: application/js
      -d '{"text": "What is the maximum loan-to-value in the Netherlands?"}' $ASSISTANT_URL/conversations/<id>/messages
 ```
 
+## Cost
+
+| What | Cost | How it is known |
+|---|---|---|
+| Reading one dossier (10 documents, gpt-5.4-mini, low effort) | about **0.07 USD** the first time | measured: `model_eval` with token prices from `config/model_prices.yaml` |
+| Reading the same dossier again | **0** | every model reply is cached in Blob, keyed by its inputs; the deploy test shows it on every run |
+| One assistant question | 3 model calls (topic, rewrite, answer) + 1 embedding + 1 Prompt Shields call; the topic and rewrite calls are cached | the `llm` spans in Application Insights carry tokens and cost per call |
+| Idle environment | dominated by **AI Search Basic** (a fixed hourly price) and the two warm replicas (`min_replicas = 1`); the registry, storage, Log Analytics (capped at 0.5 GB/day) and Content Safety are cents | estimate from the Azure pricing pages; the actual figure is in Cost Management, with a resource-group budget alert at 50% and 90% |
+
+Two levers bring idle cost close to zero after the demo: `min_replicas = 0` (accepting cold starts, and moving the
+assessment to a queue, ADR 0002) and `terraform destroy`; the search index is rebuilt from the manifest in minutes.
+
 ## Development and CI
 
 ```bash
@@ -177,6 +189,7 @@ uv run pre-commit install    # the same checks before every commit
 | `policy-impact.yml` | PRs touching `policy/`, manual | Validates the changed policy, runs the sample dossier under the policy before and after, and posts the checks whose outcome changes as one PR comment |
 | `infra.yml` | PRs and `main` touching `infra/` | `terraform fmt` and `validate`, Trivy configuration scan; the plan posted on the PR; apply on `main` (environment `dev`) |
 | `deploy.yml` | `main` (app changes), manual | Build, Trivy (fixable HIGH/CRITICAL fail), push to ACR, a new revision tested on a `staging` label (health, auth, the sample dossier end to end), then 100% of traffic; automatic rollback on failure |
+| `eval-assistant.yml` | manual | Runs `assistant/evals/cases.yaml` against the deployed assistant: answer accuracy, false refusals, refusal accuracy, latency; fails if an attack or limit breach is not refused |
 | `ingest.yml` | changes to the corpus, manual | Builds the assistant's search index: download, hash check, chunk, Prompt Shields scan, embed |
 | `eval.yml` | manual | Scores Azure OpenAI deployments on the reference set and posts a comparison (OIDC sign-in, no stored key) |
 | `codeql.yml` | push, PRs, weekly | CodeQL security analysis of the Python code |
