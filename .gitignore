@@ -1,5 +1,6 @@
 .env
 .credit_review_cache/
+.credit_review_data/
 .venv/
 __pycache__/
 .pytest_cache/

@@ -1,6 +1,6 @@
 """One interface, two backends: Anthropic API and any OpenAI-compatible server (LM Studio, Azure OpenAI).
 
-Every call returns JSON matching a schema, and every result is cached on disk,
+Every call returns JSON matching a schema, and every result is cached (on disk, or in Blob Storage in Azure),
 keyed by everything that influences it (provider, model, prompts, schema, image
 hashes). Re-running a dossier therefore costs nothing and gives identical output,
 and `offline=True` guarantees no network call is made: the demo is reproducible.
@@ -20,7 +20,10 @@ Configuration (environment variables or a `.env` file in the working directory):
     CREDIT_REVIEW_LLM_REASONING_EFFORT  OpenAI-compatible reasoning models only (e.g. low | medium | high);
                           empty = not sent, so the model's default applies
     CREDIT_REVIEW_LLM_OFFLINE    1 = cache only, never call a model
-    CREDIT_REVIEW_CACHE_DIR      default .credit_review_cache
+    CREDIT_REVIEW_CACHE_DIR      default .credit_review_cache (the API keeps its cache in Blob instead; see storage.py)
+
+Every call is traced (OpenTelemetry): model, tokens, cost and whether the cache answered. Nothing is
+exported unless telemetry is set up (credit_review.telemetry), so the CLI and tests are unaffected.
 """
 
 from __future__ import annotations
@@ -35,9 +38,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+from opentelemetry import trace
 from pydantic import BaseModel
 
 from credit_review.prices import call_cost
+from credit_review.storage import LocalStore, Store
+
+tracer = trace.get_tracer(__name__)
 
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"
 DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1"
@@ -407,9 +414,10 @@ class OpenAICompatProvider(_JSONProvider):
 class LLMClient:
     """Cache-first facade. Providers are injectable for tests and replay."""
 
-    def __init__(self, config: LLMConfig | None = None, provider: Provider | None = None):
+    def __init__(self, config: LLMConfig | None = None, provider: Provider | None = None, store: Store | None = None):
         self.config = config or LLMConfig.from_env()
         self._provider = provider
+        self.store = store or LocalStore(self.config.cache_dir)   # keys are relative: llm/<ab>/<key>.json
 
     @property
     def provider(self) -> Provider:
@@ -451,10 +459,25 @@ class LLMClient:
             payload["reasoning_effort"] = self.config.reasoning_effort
         return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
-    def _cache_path(self, key: str) -> Path:
-        return self.config.cache_dir / "llm" / key[:2] / f"{key}.json"
+    @staticmethod
+    def _cache_name(key: str) -> str:
+        return f"llm/{key[:2]}/{key}.json"
 
     def complete(self, req: LLMRequest) -> LLMResult:
+        with tracer.start_as_current_span(f"llm {req.purpose}") as span:
+            result = self._complete(req)
+            span.set_attributes({
+                "gen_ai.system": self.config.label or self.config.provider, "gen_ai.request.model": result.model,
+                "gen_ai.usage.input_tokens": result.usage.get("input_tokens") or 0,
+                "gen_ai.usage.output_tokens": result.usage.get("output_tokens") or 0,
+                "credit_review.purpose": req.purpose, "credit_review.doc": str(req.meta.get("doc", "")),
+                "credit_review.cached": result.cached, "credit_review.mode": result.mode,
+                "credit_review.seconds": result.seconds,
+                **({"credit_review.cost": result.cost} if result.cost is not None else {}),
+            })
+            return result
+
+    def _complete(self, req: LLMRequest) -> LLMResult:
         offline = self.config.offline
         model = self.config.vision_model if (req.images and self.config.vision_model) else self.config.model
         if not model and offline:
@@ -462,9 +485,10 @@ class LLMClient:
         if not model:
             model = self.resolve_model(bool(req.images))
         key = self.cache_key(req, model)
-        path = self._cache_path(key)
-        if path.exists():
-            entry = json.loads(path.read_text(encoding="utf-8"))
+        name = self._cache_name(key)
+        cached = self.store.get(name)
+        if cached is not None:
+            entry = json.loads(cached.decode("utf-8"))
             return LLMResult(data=entry["data"], provider=entry["provider"], model=entry["model"],
                              mode=entry["mode"], cache_key=key, cached=True,
                              usage=entry.get("usage", {}), seconds=0.0,
@@ -481,11 +505,10 @@ class LLMClient:
             raise LLMError(f"{self.config.provider} call failed ({type(exc).__name__}): {str(exc)[:400]}") from exc
         seconds = round(time.monotonic() - started, 2)
         cost = call_cost(model, usage)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({
+        self.store.put(name, json.dumps({
             "cache_key": key, "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "provider": self.config.provider, "model": model, "mode": mode, "purpose": req.purpose,
             "meta": req.meta, "usage": usage, "seconds": seconds, "cost": cost, "data": data, "raw_text": raw,
-        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        }, ensure_ascii=False, indent=2).encode("utf-8"))
         return LLMResult(data=data, provider=self.config.provider, model=model, mode=mode,
                          cache_key=key, cached=False, usage=usage, seconds=seconds, cost=cost)

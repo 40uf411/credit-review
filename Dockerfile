@@ -41,10 +41,14 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     CREDIT_REVIEW_CACHE_DIR=/tmp/credit_review_cache \
+    CREDIT_REVIEW_DATA_DIR=/tmp/credit_review_data \
     CREDIT_REVIEW_PRICES_FILE=/app/config/model_prices.yaml
 
 USER app
+EXPOSE 8000
 
-# Example: docker run --rm -v "$PWD/case_pack:/data:ro" -e CREDIT_REVIEW_LLM_OFFLINE=1 \
-#            credit-review credit-review /data/dossier --decision-date 2026-10-12 --out /tmp/out
-CMD ["credit-review", "--help"]
+# The default is the HTTP service (credit_review/api.py). The CLI is in the same image:
+#   docker run --rm -v "$PWD/case_pack:/data:ro" -e CREDIT_REVIEW_LLM_OFFLINE=1 \
+#     credit-review credit-review /data/dossier --decision-date 2026-10-12 --out /tmp/out
+CMD ["uvicorn", "credit_review.api:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", \
+     "--forwarded-allow-ips", "*", "--no-server-header"]

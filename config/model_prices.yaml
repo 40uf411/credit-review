@@ -11,4 +11,4 @@ checked: 2026-10-27
 source: https://azure.microsoft.com/pricing/details/azure-openai/
 models:
   gpt-5.4-mini: {input: 0.83, output: 4.95}      # Data Zone (EU); Global is 0.75 / 4.50
-  # gpt-5.5: {input: ..., output: ...}            # add with the deployment once quota is granted
+  # gpt-5.5: {input: ..., output: ...}            # quota requested and denied (Oct 2026); add if it is granted

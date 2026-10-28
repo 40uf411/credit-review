@@ -7,3 +7,18 @@ output "deployments" {
   description = "Deployment names the application can call."
   value       = keys(azurerm_cognitive_deployment.model)
 }
+
+output "api_url" {
+  description = "The service's public address (Swagger UI at /docs)."
+  value       = "https://${azurerm_container_app.api.ingress[0].fqdn}"
+}
+
+output "github_variables" {
+  description = "Repository variables deploy.yml needs (Settings → Secrets and variables → Actions → Variables)."
+  value = {
+    ACR_NAME           = azurerm_container_registry.this.name
+    CONTAINER_APP      = azurerm_container_app.api.name
+    APP_RESOURCE_GROUP = data.azurerm_resource_group.app.name
+    API_URL            = "https://${azurerm_container_app.api.ingress[0].fqdn}"
+  }
+}
