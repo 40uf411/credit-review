@@ -120,3 +120,30 @@ def test_an_azure_failure_keeps_the_download_report(tmp_path, monkeypatch):
     report, status = run(argparse.Namespace(manifest=write_manifest(tmp_path), dry_run=False), client=client(),
                          shields=Broken(), embedder=object())
     assert status == 1 and "Failed:** RuntimeError: 403" in report.markdown() and report.rows[0]["chunks"] == 2
+
+
+def test_a_committed_copy_is_read_instead_of_downloaded(tmp_path):
+    (tmp_path / "files").mkdir()
+    (tmp_path / "files" / "nl.html").write_text(HTML)
+    path = tmp_path / "manifest.yaml"
+    path.write_text(yaml.safe_dump({"documents": [{**DOC.__dict__, "file": "nl.html", "sha256": None}]}))
+    report, status = run(argparse.Namespace(manifest=path, dry_run=True), client=client(status=500))
+    assert status == 0 and report.rows[0]["status"] == "ok (from file)" and report.rows[0]["chunks"] == 2
+
+
+def test_a_missing_copy_is_reported(tmp_path):
+    path = tmp_path / "manifest.yaml"
+    path.write_text(yaml.safe_dump({"documents": [{**DOC.__dict__, "file": "absent.pdf", "sha256": None}]}))
+    report, _ = run(argparse.Namespace(manifest=path, dry_run=True), client=client())
+    assert "file missing" in report.markdown()
+
+
+def test_an_empty_page_is_not_ok_and_offers_no_hash_to_pin(tmp_path):
+    report, status = run(argparse.Namespace(manifest=write_manifest(tmp_path), dry_run=True), client=client(body=b""))
+    assert status == 1 and report.rows[0]["status"].startswith("no text")
+    assert "e3b0c442" not in report.markdown() and "Pin these hashes" not in report.markdown()
+
+
+def test_http_errors_name_the_status(tmp_path):
+    report, _ = run(argparse.Namespace(manifest=write_manifest(tmp_path), dry_run=True), client=client(status=403))
+    assert "download failed (HTTP 403)" in report.markdown()
