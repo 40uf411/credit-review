@@ -44,6 +44,9 @@ for production:
 - **Public endpoints** on Storage, the registry, Foundry and the app. Production uses private endpoints and a
   VNet-integrated Container Apps environment.
 - **Locally redundant storage** (LRS). Production uses ZRS.
+- **AI Search in a second EU region** (France Central): Sweden Central had no Search capacity for new services. The
+  index holds public legal texts and every call stays in the EU; production keeps Search next to the app (capacity
+  reserved in advance) to avoid the cross-region hop.
 - **An API key** for callers. Production uses Entra ID authentication (Container Apps built-in auth, or API
   Management in front), with roles per analyst group.
 

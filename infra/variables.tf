@@ -117,3 +117,15 @@ variable "embedding_deployment" {
     error_message = "embedding_deployment must be one of the deployments in var.deployments."
   }
 }
+
+variable "search_location" {
+  description = "EU region of the Azure AI Search service (its capacity is regional; Sweden Central had none in Oct 2026)."
+  type        = string
+  default     = "francecentral"
+
+  validation {
+    condition = contains(["francecentral", "northeurope", "westeurope", "germanywestcentral", "swedencentral",
+    "polandcentral", "italynorth", "spaincentral"], var.search_location)
+    error_message = "search_location must be an EU region with the semantic ranker."
+  }
+}
