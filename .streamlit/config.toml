@@ -1,0 +1,16 @@
+[theme]
+base = "light"
+primaryColor = "#1C3D5A"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F2F4F7"
+textColor = "#101828"
+
+[server]
+headless = true
+maxUploadSize = 15          # MB per file, the same limit as the API
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "viewer"      # no developer menu or "Deploy" button for the analyst

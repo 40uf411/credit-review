@@ -28,7 +28,7 @@ jobs:
           python-version: "3.13"
           enable-cache: true
       - name: Install
-        run: uv sync --locked
+        run: uv sync --locked --extra ui
       - name: Ruff
         run: uv run ruff check --output-format=github .
       - name: Pyright
@@ -49,7 +49,7 @@ jobs:
           python-version: ${{ matrix.python }}
           enable-cache: true
       - name: Install
-        run: uv sync --locked
+        run: uv sync --locked --extra ui
       # No model or network is needed: the pipeline replays the hand-labelled reference values.
       - name: Pytest
         env:
@@ -108,8 +108,8 @@ jobs:
           version: ${{ env.UV_VERSION }}
           python-version: "3.13"
           enable-cache: true
-      - name: Install runtime dependencies only
-        run: uv sync --locked --no-default-groups
+      - name: Install runtime dependencies only (with the analyst page, which the image ships)
+        run: uv sync --locked --no-default-groups --extra ui
       # Copyleft licences fail the build. PyMuPDF (AGPL) is a known, documented exception:
       # see docs/adr/0001-pdf-library-licence.md.
       - name: Check licences

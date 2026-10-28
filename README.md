@@ -36,7 +36,22 @@ otherwise the schema is put in the prompt.
 
 ## Run
 
-Use the command-line tools to validate policies, extract documents and generate assessments:
+**The analyst page:**
+
+```bash
+uv sync --extra ui
+uv run streamlit run app.py
+```
+
+Pick the policy and the dossier (the sample, or upload PDFs), press *Detect document types*, check the types, then
+*Run assessment*. Each finding opens to the policy text, the working and the quotes, and any quote can be shown
+highlighted on its page. *Policy change* reruns the same file under another policy version without reading the
+documents again: under v3.3, exactly two articles change (5.3 and 5.4, both to *not met*). *Cached results only* never
+calls a model. With `CREDIT_REVIEW_STORAGE_URL` set, the page shares the API's model cache in Blob, so a dossier the
+API has read costs nothing here. Dossiers are the sample or an upload, never a typed path. Hosted
+(`CREDIT_REVIEW_UI_HOSTED=1`) the page asks for the API key first. Text from documents and models is shown escaped.
+
+**The command-line tools** validate policies, extract documents and generate assessments:
 
 ```bash
 # 1. validate the policy configuration
