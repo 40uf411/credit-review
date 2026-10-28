@@ -127,6 +127,7 @@ GitHub ── infra.yml: PR → Terraform plan as a PR comment; main → apply
        └─ deploy.yml: build → scan → push to ACR → new revision with no traffic → smoke + end-to-end test → promote
 Azure (Sweden Central, everything Entra ID; no keys exist):
   Container Apps: credit-api (FastAPI)  ── managed identity ──▶ Foundry (gpt-5.4-mini, EU data zone)
+                  analyst (the page)    ─┘ (same image and identity)
                                                           ├──▶ Blob Storage: uploads, status, results, model cache
                                                           └──▶ Application Insights (traces: tokens, cost, cache hits)
 ```
@@ -137,6 +138,11 @@ curl -H "X-API-Key: $KEY" -F "files=@case_pack/dossier/payslip_may2026.pdf" ... 
 curl -H "X-API-Key: $KEY" $API_URL/dossiers/<id>               # pending → running → done
 curl -H "X-API-Key: $KEY" $API_URL/dossiers/<id>/assessment    # the same JSON the CLI writes
 ```
+
+**The analyst page** runs as `ca-analyst` from the same image (`APP_MODULE=analyst`): open `$ANALYST_URL`, paste the
+API key, pick the sample or upload a dossier. It shares the API's model cache, so the sample dossier costs nothing to
+assess there once the deploy test has read it. One replica, always on: a Streamlit session lives in one replica's
+memory.
 
 The assessment runs as a background task in the service; why that is acceptable here, and what replaces it in
 production, is in `docs/adr/0002-container-apps.md`. Uploads expire after 30 days. Setup steps are in

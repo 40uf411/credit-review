@@ -16,13 +16,13 @@ WORKDIR /src
 # Dependencies first: this layer is rebuilt only when the lockfile changes.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-default-groups --no-install-project
+    uv sync --locked --no-default-groups --extra ui --no-install-project
 
 COPY README.md ./
 COPY credit_review ./credit_review
 COPY assistant ./assistant
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-default-groups --no-editable
+    uv sync --locked --no-default-groups --extra ui --no-editable
 
 # ------------------------------------------------------------------ runtime: no build tools, no root
 FROM python AS runtime
@@ -37,6 +37,10 @@ COPY --from=build --chown=app:app /app/.venv /app/.venv
 # The policy is configuration, read at run time; documents and model caches are mounted, never baked in.
 COPY --chown=app:app policy ./policy
 COPY --chown=app:app config ./config
+# The analyst page and the synthetic sample dossier it offers (APP_MODULE=analyst).
+COPY --chown=app:app app.py ./
+COPY --chown=app:app .streamlit ./.streamlit
+COPY --chown=app:app case_pack/dossier ./case_pack/dossier
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
@@ -52,5 +56,6 @@ EXPOSE 8000
 # The default is the HTTP service (credit_review/api.py). The CLI is in the same image:
 #   docker run --rm -v "$PWD/case_pack:/data:ro" -e CREDIT_REVIEW_LLM_OFFLINE=1 \
 #     credit-review credit-review /data/dossier --decision-date 2026-10-12 --out /tmp/out
-# APP_MODULE picks the service: credit_review.api:app (default) or assistant.api:app; same image, same digest.
-CMD ["sh", "-c", "exec uvicorn \"${APP_MODULE:-credit_review.api:app}\" --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*' --no-server-header"]
+# APP_MODULE picks the service: credit_review.api:app (default), assistant.api:app, or analyst (the Streamlit page,
+# app.py); same image, same digest, same port.
+CMD ["sh", "-c", "if [ \"$APP_MODULE\" = analyst ]; then exec streamlit run app.py --server.port 8000 --server.address 0.0.0.0; else exec uvicorn \"${APP_MODULE:-credit_review.api:app}\" --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*' --no-server-header; fi"]

@@ -100,6 +100,13 @@ between revisions and the API key; those are in `ignore_changes`, so an apply ne
 - Run **Actions → Deploy**: it now rolls out both apps from one image and tests the assistant with one cited answer
   and one off-topic refusal.
 
+## 5. The analyst page
+
+`terraform apply` (or merging the `infra/` PR) adds the `ca-analyst` container app: the Streamlit page (`app.py`)
+from the same image, with the same identity, model and model cache as the API. Then set the repository variables
+`ANALYST_APP` and `ANALYST_URL` from `github_variables`, and run **Actions → Deploy**: it rolls out all three apps
+and checks that the page is healthy and loads. The page asks for the API key before it shows anything.
+
 ## What signs in where
 
 | Who | How | Allowed to |

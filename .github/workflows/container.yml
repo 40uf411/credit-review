@@ -71,6 +71,13 @@ jobs:
           for _ in $(seq 30); do curl -fsS localhost:8001/healthz && break; sleep 1; done
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8001/conversations)
           [ "$code" = 401 ] || { echo "::error::assistant without a key answered $code, expected 401"; exit 1; }
+          # And the analyst page (Streamlit) when APP_MODULE=analyst: it starts, is healthy and serves its page.
+          docker run -d --name analyst -p 8002:8000 -e CREDIT_API_KEY=smoke -e CREDIT_REVIEW_UI_HOSTED=1 \
+            -e APP_MODULE=analyst credit-review:ci
+          trap 'docker logs api; docker logs assistant; docker logs analyst; docker rm -f api assistant analyst > /dev/null' EXIT
+          for _ in $(seq 30); do curl -fsS localhost:8002/_stcore/health && break; sleep 1; done
+          curl -fsS localhost:8002/_stcore/health
+          curl -fsS localhost:8002/ | grep -q '<div id="root">' || { echo "::error::the analyst page did not load"; exit 1; }
 
       # Vulnerabilities only. Secrets in our own code are caught by gitleaks in CI; the image's secret scanner
       # flags placeholder text in third-party SDK docstrings, which is noise rather than findings.
