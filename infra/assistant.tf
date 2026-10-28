@@ -7,10 +7,12 @@ locals {
 
 # ------------------------------------------------------------------ retrieval: Azure AI Search
 
+# Search capacity is regional and Sweden Central had none left for new services (Oct 2026), so the search service
+# has its own EU region; the index holds public legal texts, and every call stays inside the EU.
 resource "azurerm_search_service" "this" {
   name                         = "srch-${var.name_prefix}-${local.suffix}"
   resource_group_name          = data.azurerm_resource_group.app.name
-  location                     = var.location
+  location                     = var.search_location
   sku                          = "basic" # the smallest tier with the semantic ranker and a 99.9% SLA option
   semantic_search_sku          = "free"  # 1,000 semantic queries a month
   local_authentication_enabled = false   # Entra ID only: no admin or query keys
