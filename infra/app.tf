@@ -112,12 +112,20 @@ resource "azurerm_container_app_environment" "this" {
   logs_destination           = "log-analytics"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
   tags                       = var.tags
+
+  # Azure creates environments with workload profiles; declaring the default one keeps plans clean. A dedicated
+  # profile (more CPU for PDF parsing) is an addition here, not a new environment (docs/adr/0002-container-apps.md).
+  workload_profile {
+    name                  = "Consumption"
+    workload_profile_type = "Consumption"
+  }
 }
 
 resource "azurerm_container_app" "api" {
   name                         = "ca-credit-api"
   resource_group_name          = data.azurerm_resource_group.app.name
   container_app_environment_id = azurerm_container_app_environment.this.id
+  workload_profile_name        = "Consumption"
   revision_mode                = "Multiple" # deploy.yml tests a new revision on a label before it takes traffic
   max_inactive_revisions       = 5          # what a rollback can go back to
   tags                         = var.tags
