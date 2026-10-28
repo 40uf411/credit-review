@@ -17,7 +17,7 @@ documents:
     format: pdf
     licence: "© European Union, reuse authorised (Commission Decision 2011/833/EU)"
     file: eu-mcd.pdf
-    sha256:
+    sha256: 2db57064e0e176c530112eee975750c9c8ae2846a916155bfc237890eab6c83d
 
   - id: eu-eba-lom
     title: EBA Guidelines on loan origination and monitoring (EBA/GL/2020/06)
@@ -28,7 +28,7 @@ documents:
     url: https://www.eba.europa.eu/sites/default/files/document_library/Publications/Guidelines/2020/Guidelines%20on%20loan%20origination%20and%20monitoring/884283/EBA%20GL%202020%2006%20Final%20Report%20on%20GL%20on%20loan%20origination%20and%20monitoring.pdf
     format: pdf
     licence: "© European Banking Authority, reproduction authorised with source acknowledged"
-    sha256:
+    sha256: 1a61938f0fccf8bff502c90cdf182d784aab058c50c9e5d0df4b932d0d19fa3e
 
   - id: be-nbb-mortgage
     title: NBB supervisory expectations for Belgian mortgage loans
@@ -40,7 +40,7 @@ documents:
     format: pdf
     licence: "© National Bank of Belgium, reproduction authorised with source acknowledged"
     file: be-nbb-mortgage.pdf
-    sha256:
+    sha256: bcfb0a243fbb728f068768b27cb4f81be1e36406bd41f04b50c45ab6e095361f
 
   - id: fr-hcsf-credit
     title: Décision D-HCSF-2021-7 relative aux conditions d'octroi de crédits immobiliers
@@ -52,6 +52,7 @@ documents:
     format: pdf
     licence: "Licence Ouverte / Open Licence (Etalab)"
     file: fr-hcsf-credit.pdf
+    # The first copy was a scan with no text layer; replace it with a text version (Légifrance), then pin.
     sha256:
 
   - id: nl-thk
@@ -64,4 +65,4 @@ documents:
     format: pdf
     licence: "Public domain (Dutch legislation, Auteurswet art. 11)"
     file: nl-thk.pdf
-    sha256:
+    sha256: b7c1ff4d567a6ddb8673c0cd7575ad6441f448467123d44f03d629f8b73c80bb
