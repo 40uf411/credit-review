@@ -80,6 +80,10 @@ resource "azurerm_container_app" "analyst" {
         value = azurerm_storage_account.app.primary_blob_endpoint
       }
       env {
+        name  = "APPLICATIONINSIGHTS_CONNECTION_STRING" # traces, like the API's: one `assess` span per run
+        value = azurerm_application_insights.this.connection_string
+      }
+      env {
         name        = "CREDIT_API_KEY"
         secret_name = "api-key"
       }

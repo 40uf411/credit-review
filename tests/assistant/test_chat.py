@@ -110,3 +110,38 @@ def test_a_failing_model_refuses_without_using_up_a_question(tmp_path):
     reply = chat.ask(conversation, "Maximale hypotheek waarde woning?")
     assert reply.code == "unavailable" and reply.remaining_messages == MAX_MESSAGES
     assert store.get(conversation.id, "u1").turns == []
+
+
+@pytest.fixture
+def spans(monkeypatch):
+    """The chat's spans, captured in memory (the global tracer provider is left alone)."""
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    import assistant.chat
+    exporter, provider = InMemorySpanExporter(), TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(assistant.chat, "tracer", provider.get_tracer("test"))
+    return exporter
+
+
+def test_each_turn_is_traced_with_its_outcome_and_never_its_text(tmp_path, spans):
+    chat, store = make_chat(tmp_path, Model(answer=cited()))
+    conversation = store.create("u1")
+    question = "Wat is de maximale hypotheek ten opzichte van de waarde van de woning?"
+    chat.ask(conversation, question)
+    chat.ask(conversation, "x" * 2000)                               # too long: refused before any model call
+    answered, refused = (s.attributes or {} for s in spans.get_finished_spans())
+    assert answered["assistant.code"] == "ok" and answered["assistant.citations"] == 1
+    assert answered["assistant.chunks"] >= 1 and answered["assistant.prompt_version"]
+    assert refused["assistant.code"] == "too_long" and refused["assistant.refused"] is True
+    assert all(question not in str(v) for s in spans.get_finished_spans() for v in (s.attributes or {}).values())
+
+
+def test_a_withheld_answer_records_which_check_failed(tmp_path, spans):
+    chat, store = make_chat(tmp_path, Model(answer=cited(quote="a sentence that is in no source at all")))
+    chat.ask(store.create("u1"), "Maximale hypotheek waarde woning?")
+    attributes = spans.get_finished_spans()[0].attributes or {}
+    assert attributes["assistant.code"] == "bad_citation"
+    assert attributes["assistant.withheld"] == "not_verbatim, chunk nl-thk-0003"

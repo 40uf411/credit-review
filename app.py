@@ -24,8 +24,10 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+from opentelemetry import trace
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
+from credit_review import telemetry
 from credit_review.classify import classify_documents
 from credit_review.display import esc, md, safe_name
 from credit_review.llm import LLMClient, LLMConfig
@@ -35,6 +37,7 @@ from credit_review.policy import load_policy
 from credit_review.storage import store_from_env
 
 ROOT = Path(__file__).resolve().parent
+tracer = trace.get_tracer(__name__)
 HOSTED = os.environ.get("CREDIT_REVIEW_UI_HOSTED") == "1"
 SAMPLE = ROOT / "case_pack" / "dossier"
 MAX_FILES, MAX_BYTES = 25, 15 * 1024 * 1024        # the same limits as the API
@@ -53,6 +56,13 @@ OUTCOMES = {
 }
 OFFLINE = "Cached results only"
 
+@st.cache_resource(show_spinner=False)
+def start_telemetry() -> bool:
+    """Once per process (Streamlit reruns this script on every click): traces go where the API's go."""
+    return telemetry.setup("analyst")
+
+
+start_telemetry()
 st.set_page_config(page_title="Credit Review — Example Bank pilot", layout="wide")
 
 st.markdown("""
@@ -305,11 +315,14 @@ if st.button("Run assessment", type="primary"):
             if get_script_run_ctx(suppress_warning=True) is not None:     # worker threads cannot draw
                 status.write(msg)
         try:
-            st.session_state.assessment = assess(
-                policy, report.sha256, docs, st.session_state.types, llm,
-                decision_date=decision_date.isoformat(),
-                application_date=application_date.isoformat() if application_date else None,
-                run_judgment=run_judgment, progress=say)
+            with tracer.start_as_current_span("assess") as span:     # the same span the API writes
+                span.set_attributes({"credit_review.documents": len(docs),
+                                     "credit_review.policy_version": str(policy.policy.version)})
+                st.session_state.assessment = assess(
+                    policy, report.sha256, docs, st.session_state.types, llm,
+                    decision_date=decision_date.isoformat(),
+                    application_date=application_date.isoformat() if application_date else None,
+                    run_judgment=run_judgment, progress=say)
             st.session_state.comparison = None
             status.update(label="Assessment complete", state="complete", expanded=False)
         except Exception as exc:
