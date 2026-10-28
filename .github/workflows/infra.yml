@@ -93,7 +93,14 @@ jobs:
         env:
           OBJECT_IDS: ${{ vars.MODEL_USER_OBJECT_IDS }}
           EMAILS: ${{ vars.BUDGET_EMAILS }}
+          TFSTATE_RG: ${{ vars.TFSTATE_RG }}
+          TFSTATE_ACCOUNT: ${{ vars.TFSTATE_ACCOUNT }}
         run: |
+          missing=""
+          for v in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID TFSTATE_RG TFSTATE_ACCOUNT; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          [ -z "$missing" ] || { echo "::error::Empty:$missing. Set AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, TFSTATE_RG and TFSTATE_ACCOUNT as *repository* variables (Settings → Secrets and variables → Actions → Variables), not only on an environment: the plan on a PR runs outside any environment."; exit 1; }
           as_list() { jq -cn --arg v "$1" '$v | gsub("[\\[\\]\"“”‘’'"'"']"; "") | split("[,;\\s]+"; null) | map(select(length > 0))'; }
           [ -n "$OBJECT_IDS" ] || { echo "::error::Set the repository variable MODEL_USER_OBJECT_IDS (your Entra object id; [] for none), or a plan would remove the access it grants."; exit 1; }
           echo "TF_VAR_model_user_object_ids=$(as_list "$OBJECT_IDS")" >> "$GITHUB_ENV"
@@ -170,7 +177,14 @@ jobs:
         env:
           OBJECT_IDS: ${{ vars.MODEL_USER_OBJECT_IDS }}
           EMAILS: ${{ vars.BUDGET_EMAILS }}
+          TFSTATE_RG: ${{ vars.TFSTATE_RG }}
+          TFSTATE_ACCOUNT: ${{ vars.TFSTATE_ACCOUNT }}
         run: |
+          missing=""
+          for v in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID TFSTATE_RG TFSTATE_ACCOUNT; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          [ -z "$missing" ] || { echo "::error::Empty:$missing. Set AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, TFSTATE_RG and TFSTATE_ACCOUNT as *repository* variables (Settings → Secrets and variables → Actions → Variables), not only on an environment: the plan on a PR runs outside any environment."; exit 1; }
           as_list() { jq -cn --arg v "$1" '$v | gsub("[\\[\\]\"“”‘’'"'"']"; "") | split("[,;\\s]+"; null) | map(select(length > 0))'; }
           [ -n "$OBJECT_IDS" ] || { echo "::error::Set the repository variable MODEL_USER_OBJECT_IDS (your Entra object id; [] for none), or the apply would remove the access it grants."; exit 1; }
           echo "TF_VAR_model_user_object_ids=$(as_list "$OBJECT_IDS")" >> "$GITHUB_ENV"
