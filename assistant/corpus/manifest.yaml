@@ -1,7 +1,11 @@
-# The assistant's sources. Downloaded and hash-checked by `python -m assistant.ingest`; never committed.
+# The assistant's sources, downloaded (or read from corpus/files/) and hash-checked by `python -m assistant.ingest`.
 #
 # sha256: empty until the first ingestion run prints it (job summary of ingest.yml). Pin it here after reading the
 # document once: from then on a changed document fails ingestion instead of silently changing the answers.
+#
+# file: EUR-Lex, the NBB, economie.gouv.fr and wetten.overheid.nl refuse requests from GitHub's runners (an empty
+# challenge page, 403, or no connection), so those four are read from a copy under corpus/files/, saved once from a
+# browser (Print → Save as PDF for web pages). `url` stays as the provenance of each copy.
 documents:
   - id: eu-mcd
     title: Mortgage Credit Directive 2014/17/EU
@@ -10,8 +14,9 @@ documents:
     language: en
     effective: 2016-03-21
     url: https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32014L0017
-    format: html
+    format: pdf
     licence: "© European Union, reuse authorised (Commission Decision 2011/833/EU)"
+    file: eu-mcd.pdf
     sha256:
 
   - id: eu-eba-lom
@@ -32,8 +37,9 @@ documents:
     language: en
     effective: 2020-01-01
     url: https://www.nbb.be/en/node/220164
-    format: html
+    format: pdf
     licence: "© National Bank of Belgium, reproduction authorised with source acknowledged"
+    file: be-nbb-mortgage.pdf
     sha256:
 
   - id: fr-hcsf-credit
@@ -43,8 +49,9 @@ documents:
     language: fr
     effective: 2022-01-01
     url: https://www.economie.gouv.fr/hcsf/mesures/mesure-relative-loctroi-de-credits-immobiliers-0
-    format: html
+    format: pdf
     licence: "Licence Ouverte / Open Licence (Etalab)"
+    file: fr-hcsf-credit.pdf
     sha256:
 
   - id: nl-thk
@@ -54,6 +61,7 @@ documents:
     language: nl
     effective: 2013-01-01
     url: https://wetten.overheid.nl/BWBR0032503/
-    format: html
+    format: pdf
     licence: "Public domain (Dutch legislation, Auteurswet art. 11)"
+    file: nl-thk.pdf
     sha256:

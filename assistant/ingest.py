@@ -45,10 +45,11 @@ class Document:
     country: str
     language: str
     effective: str
-    url: str
+    url: str                      # where the document is published (provenance; fetched unless `file` is set)
     format: str
     licence: str
     sha256: str | None = None
+    file: str | None = None       # a copy committed under corpus/files/, for sites that refuse automated downloads
 
 
 @dataclass
@@ -78,7 +79,9 @@ class Report:
 
 def load_manifest(path: str | Path = MANIFEST) -> list[Document]:
     data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-    docs = [Document(**{**d, "effective": str(d["effective"]), "sha256": d.get("sha256") or None})
+    files = Path(path).parent / "files"
+    docs = [Document(**{**d, "effective": str(d["effective"]), "sha256": d.get("sha256") or None,
+                        "file": str(files / d["file"]) if d.get("file") else None})
             for d in data["documents"]]
     ids = [d.id for d in docs]
     if len(ids) != len(set(ids)):
@@ -167,9 +170,19 @@ def chunk(doc: Document, text: str, size: int = CHUNK_CHARS) -> list[Chunk]:
 # ------------------------------------------------------------------ the run
 
 def download(doc: Document, client: httpx.Client) -> bytes:
+    if doc.file:
+        return Path(doc.file).read_bytes()
     response = client.get(doc.url, follow_redirects=True)
     response.raise_for_status()
     return response.content
+
+
+def _failure(exc: Exception) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"download failed (HTTP {exc.response.status_code})"
+    if isinstance(exc, FileNotFoundError):
+        return "file missing (add it under corpus/files/)"
+    return f"download failed ({type(exc).__name__})"
 
 
 def read_document(doc: Document, data: bytes) -> list[Chunk]:
@@ -253,22 +266,32 @@ def run(args: argparse.Namespace, client: httpx.Client | None = None, shields: A
         indexer: Any = build_index) -> tuple[Report, int]:
     docs = load_manifest(args.manifest)
     report = Report()
-    client = client or httpx.Client(timeout=60, headers={"User-Agent": "credit-review-assistant-ingest/1.0"})
+    client = client or httpx.Client(timeout=60, headers={
+        "User-Agent": "Mozilla/5.0 (compatible; credit-review-assistant-ingest/1.0)",
+        "Accept": "text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en,fr;q=0.8,nl;q=0.8"})
     chunks: list[Chunk] = []
     for doc in docs:
         try:
             data = download(doc, client)
         except Exception as exc:
-            report.rows.append({"id": doc.id, "status": f"download failed ({type(exc).__name__})"})
+            report.rows.append({"id": doc.id, "status": _failure(exc)})
             continue
         digest = hashlib.sha256(data).hexdigest()
         if doc.sha256 and doc.sha256 != digest:
             report.rows.append({"id": doc.id, "status": "**changed since it was pinned**", "sha256": digest})
             return report, 1
-        found = read_document(doc, data)
+        try:
+            found = read_document(doc, data)
+        except Exception as exc:
+            report.rows.append({"id": doc.id, "status": f"unreadable ({type(exc).__name__})"})
+            continue
+        if not found:            # an empty body or a challenge page: nothing to index, and no hash worth pinning
+            report.rows.append({"id": doc.id, "status": f"no text ({len(data)} bytes received)"})
+            continue
         chunks += found
-        report.rows.append({"id": doc.id, "status": "ok", "chunks": len(found), "sha256": digest,
-                            "pinned": bool(doc.sha256)})
+        report.rows.append({"id": doc.id, "status": "ok" + (" (from file)" if doc.file else ""),
+                            "chunks": len(found), "sha256": digest, "pinned": bool(doc.sha256)})
     if not chunks:
         return report, 1
     if args.dry_run:
