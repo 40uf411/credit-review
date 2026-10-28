@@ -6,7 +6,7 @@ name: Deploy
 # stays on the previous revision and the new one is deactivated.
 #
 # Needs repository variables AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, ACR_NAME, CONTAINER_APP,
-# APP_RESOURCE_GROUP, API_URL and (once the assistant exists) ASSISTANT_APP, all printed by
+# APP_RESOURCE_GROUP, API_URL and (once they exist) ASSISTANT_APP and ANALYST_APP, all printed by
 # `terraform output github_variables` in infra/, and the secret CREDIT_API_KEY in the `dev` environment.
 
 on:
@@ -57,16 +57,22 @@ jobs:
           for v in APP RG ACR API_KEY; do [ -n "${!v}" ] || missing="$missing $v"; done
           [ -z "$missing" ] || { echo "::error::Missing:$missing (see the header of deploy.yml)"; exit 1; }
 
-      # The apps to roll out: the assistant joins once its container app exists (ASSISTANT_APP is set).
+      # The apps to roll out: the assistant and the analyst page join once their container apps exist
+      # (ASSISTANT_APP, ANALYST_APP set). `probe` must answer 401 without the key; the analyst page asks for the key
+      # in the page itself, so it has none.
       - name: Apps
         id: apps
         env:
           API_APP: ${{ vars.CONTAINER_APP }}
           ASSISTANT_APP: ${{ vars.ASSISTANT_APP }}
+          ANALYST_APP: ${{ vars.ANALYST_APP }}
         run: |
-          apps=$(jq -cn --arg api "$API_APP" --arg assistant "$ASSISTANT_APP" '
-            [{name: "api", app: $api, probe: "/dossiers/000000000000000000000000"}]
-            + (if $assistant == "" then [] else [{name: "assistant", app: $assistant, probe: "/conversations/x"}] end)')
+          apps=$(jq -cn --arg api "$API_APP" --arg assistant "$ASSISTANT_APP" --arg analyst "$ANALYST_APP" '
+            [{name: "api", app: $api, health: "/healthz", probe: "/dossiers/000000000000000000000000"}]
+            + (if $assistant == "" then [] else
+                [{name: "assistant", app: $assistant, health: "/healthz", probe: "/conversations/x"}] end)
+            + (if $analyst == "" then [] else
+                [{name: "analyst", app: $analyst, health: "/_stcore/health", probe: ""}] end)')
           echo "apps=$apps" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -162,9 +168,15 @@ jobs:
       - name: Smoke test
         env:
           URL: ${{ steps.revision.outputs.staging_url }}
+          HEALTH: ${{ matrix.target.health }}
           PROBE: ${{ matrix.target.probe }}
         run: |
-          for _ in $(seq 60); do curl -fsS "$URL/healthz" && break; sleep 5; done
+          for _ in $(seq 60); do curl -fsS "$URL$HEALTH" && break; sleep 5; done
+          curl -fsS "$URL$HEALTH"
+          if [ -z "$PROBE" ]; then        # the analyst page: it serves its page
+            curl -fsS "$URL/" | grep -q '<div id="root">' || { echo "::error::the page did not load"; exit 1; }
+            exit 0
+          fi
           curl -fsS "$URL/readyz"
           code=$(curl -s -o /dev/null -w '%{http_code}' "$URL$PROBE")
           [ "$code" = 401 ] || { echo "::error::without a key $PROBE answered $code, not 401"; exit 1; }
