@@ -3,7 +3,6 @@
     POST /conversations                      start one (header X-User-Id) → {id, remaining_messages}
     POST /conversations/{id}/messages        ask → {answer, citations, refused, code, remaining_messages}
     GET  /conversations/{id}                 the turns so far
-    GET  /                                   a chat page over the routes above (the key is pasted in the page)
     GET  /healthz, /readyz
 
     APP_MODULE=assistant.api:app uvicorn ...      (the same image as the credit-review API)
@@ -16,7 +15,6 @@ Entra ID token instead (docs/adr).
 from __future__ import annotations
 
 from functools import lru_cache
-from pathlib import Path
 from typing import Annotated, Any
 
 from credit_review import telemetry
@@ -24,7 +22,7 @@ from credit_review import telemetry
 telemetry.setup("assistant")
 
 from fastapi import Depends, FastAPI, Header, HTTPException  # noqa: E402
-from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 from assistant.chat import Chat  # noqa: E402
@@ -109,34 +107,6 @@ def get_conversation(conversation_id: str, user_id: UserId,
     conversation = _conversation(store, conversation_id, user_id)
     return {"id": conversation.id, "turns": [{"role": t.role, "text": t.text} for t in conversation.turns],
             "remaining_messages": chat.remaining(conversation)}
-
-
-# ------------------------------------------------------------------ the chat page
-
-WEB = Path(__file__).with_name("web")
-# Scripts and styles from this app only, nothing inline: text an answer or a source carries cannot run as code here.
-PAGE_HEADERS = {
-    "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
-    "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer",
-    "Cache-Control": "no-cache",
-}
-
-
-# One fixed route per file: no part of a file path comes from the request.
-@app.get("/", include_in_schema=False)
-def page() -> FileResponse:
-    return FileResponse(WEB / "chat.html", media_type="text/html", headers=PAGE_HEADERS)
-
-
-@app.get("/web/chat.js", include_in_schema=False)
-def page_script() -> FileResponse:
-    return FileResponse(WEB / "chat.js", media_type="text/javascript", headers=PAGE_HEADERS)
-
-
-@app.get("/web/chat.css", include_in_schema=False)
-def page_style() -> FileResponse:
-    return FileResponse(WEB / "chat.css", media_type="text/css", headers=PAGE_HEADERS)
 
 
 @app.get("/healthz", include_in_schema=False)

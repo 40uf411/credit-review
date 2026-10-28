@@ -142,7 +142,8 @@ curl -H "X-API-Key: $KEY" $API_URL/dossiers/<id>/assessment    # the same JSON t
 **The analyst page** runs as `ca-analyst` from the same image (`APP_MODULE=analyst`): open `$ANALYST_URL`, paste the
 API key, pick the sample or upload a dossier. It shares the API's model cache, so the sample dossier costs nothing to
 assess there once the deploy test has read it. One replica, always on: a Streamlit session lives in one replica's
-memory.
+memory. It is the only web page: its second tab, *Regulation assistant*, calls `ca-assistant`'s API with the
+server's key, so the guards, retrieval and memory stay in that service and the browser never holds the key.
 
 **Monitoring.** All three apps send OpenTelemetry traces to Application Insights; nothing in them holds a document, a
 question or an answer.
@@ -205,9 +206,8 @@ Refusals are fixed messages that do not say which rule matched; logs carry the g
 Ingestion (`ingest.yml`) pins each source by sha256: a document that changes stops the run instead of silently
 changing the answers.
 
-**Chat page:** open `$ASSISTANT_URL/` and paste the API key; it stays in that browser tab (sessionStorage) and goes
-out only as the `X-API-Key` header. The page loads nothing from other sites, and renders every answer and quote as
-plain text, so text inside a source or an answer cannot run as markup or script in the browser. Or call the API:
+**Asking it:** the analyst page's *Regulation assistant* tab (one web page for both). The page calls this API with the
+server's key, so the browser never holds it, and shows every answer and quote as plain text. Or call the API:
 
 ```bash
 curl -H "X-API-Key: $KEY" -H "X-User-Id: alice" -X POST $ASSISTANT_URL/conversations          # {"id": ...}

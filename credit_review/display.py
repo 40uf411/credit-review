@@ -6,10 +6,14 @@ import html
 import re
 from pathlib import Path
 
+# Characters that build a Markdown link, image or emphasis, as HTML entities: they look the same, but even a renderer
+# that parsed Markdown inside an HTML block could not turn them into a link or an image.
+_MARKDOWN_ENTITIES = {ord(c): f"&#{ord(c)};" for c in "[]()!*_`"}
+
 
 def esc(text: object) -> str:
     """For HTML a page builds itself: no markup gets through, and no blank line can end the HTML block."""
-    return html.escape(str(text)).replace("\n", "<br>")
+    return html.escape(str(text)).translate(_MARKDOWN_ENTITIES).replace("\n", "<br>")
 
 
 def md(text: object) -> str:
