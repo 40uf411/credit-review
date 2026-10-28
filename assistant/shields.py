@@ -16,6 +16,7 @@ import httpx
 API_VERSION = "2024-09-01"
 SCOPE = "https://cognitiveservices.azure.com/.default"
 MAX_CHARS = 10_000          # the service's limit for the user prompt and for all documents together
+MAX_DOCUMENTS = 5           # the service's limit on documents per call
 
 
 class ShieldsError(Exception):
@@ -32,6 +33,15 @@ class ShieldResult:
         return self.user_attack or any(self.document_attacks)
 
 
+def _azure_error(response: httpx.Response) -> str:
+    """Azure's own error code and message (never the text that was sent), for the logs."""
+    try:
+        error = response.json().get("error", {})
+        return f": {error.get('code', '')} {error.get('message', '')}".rstrip()[:200]
+    except Exception:
+        return ""
+
+
 class PromptShields:
     def __init__(self, endpoint: str, token: Callable[[], str] | None = None, timeout: float = 10.0,
                  transport: httpx.BaseTransport | None = None):
@@ -45,6 +55,8 @@ class PromptShields:
     def analyze(self, user_prompt: str, documents: Sequence[str] = ()) -> ShieldResult:
         if len(user_prompt) > MAX_CHARS or sum(len(d) for d in documents) > MAX_CHARS:
             raise ShieldsError("text longer than Prompt Shields accepts")
+        if len(documents) > MAX_DOCUMENTS:
+            raise ShieldsError(f"more than {MAX_DOCUMENTS} documents in one Prompt Shields call")
         try:
             response = self.client.post(
                 self.url, params={"api-version": API_VERSION},
@@ -56,6 +68,8 @@ class PromptShields:
             docs = tuple(d["attackDetected"] for d in body.get("documentsAnalysis", []))
         except ShieldsError:
             raise
+        except httpx.HTTPStatusError as exc:
+            raise ShieldsError(f"Prompt Shields failed (HTTP {exc.response.status_code}{_azure_error(exc.response)})") from exc
         except Exception as exc:     # anything else: no answer, so no pass
             raise ShieldsError(f"Prompt Shields failed ({type(exc).__name__})") from exc
         if not isinstance(user, bool) or not all(isinstance(d, bool) for d in docs) or len(docs) != len(documents):

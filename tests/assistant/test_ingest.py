@@ -147,3 +147,16 @@ def test_an_empty_page_is_not_ok_and_offers_no_hash_to_pin(tmp_path):
 def test_http_errors_name_the_status(tmp_path):
     report, _ = run(argparse.Namespace(manifest=write_manifest(tmp_path), dry_run=True), client=client(status=403))
     assert "download failed (HTTP 403)" in report.markdown()
+
+
+def test_scan_batches_never_exceed_five_documents():
+    seen = []
+
+    class Counting(Shields):
+        def analyze(self, user_prompt, documents=()):
+            seen.append(len(documents))
+            return super().analyze(user_prompt, documents)
+
+    chunks = [Chunk(f"d-{i}", "short text of a chunk", "d", "EU", "en") for i in range(12)]
+    kept, _ = scan(chunks, Counting())
+    assert len(kept) == 12 and max(seen) == 5 and seen == [5, 5, 2]
