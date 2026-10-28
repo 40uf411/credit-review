@@ -7,7 +7,8 @@ Rules every guard follows:
   topic check (one model call), and stops at the first refusal.
 - **Refusals do not teach.** The user sees a fixed message per refusal code; it never says which rule matched or how
   close the message came, so a refusal cannot be used to tune an attack.
-- **Nothing the user wrote is logged.** Logs carry the guard code and the conversation id only.
+- **Nothing the user wrote is logged.** Logs carry the guard code, the conversation id and, for a withheld answer,
+  which check its citation failed and the chunk id it named; never the message, the answer or a quote.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import logging
 import re
 import threading
 import time
+import unicodedata
 from collections import defaultdict, deque
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -53,6 +55,7 @@ class GuardResult:
     allowed: bool
     code: str            # "ok", or a key of MESSAGES
     message: str = ""    # what the user sees; "" when allowed
+    detail: str = ""     # for the logs only, never shown: which check failed (no user or model text)
 
     @property
     def refused(self) -> bool:
@@ -62,8 +65,8 @@ class GuardResult:
 OK = GuardResult(True, "ok")
 
 
-def refuse(code: str) -> GuardResult:
-    return GuardResult(False, code, MESSAGES[code])
+def refuse(code: str, detail: str = "") -> GuardResult:
+    return GuardResult(False, code, MESSAGES[code], detail)
 
 
 # ------------------------------------------------------------------ 1. limits (no external call)
@@ -171,8 +174,14 @@ def check_topic(text: str, llm: LLMClient, topic: Topic) -> GuardResult:
 
 # ------------------------------------------------------------------ 4. the answer
 
+# PDF text carries invisible characters a model does not copy: soft hyphens ("credit\u00adworthiness" in the MCD)
+# and zero-width spaces or joiners.
+_INVISIBLE = dict.fromkeys(map(ord, "\u00ad\u200b\u200c\u200d\u2060\ufeff"))
+
+
 def _normalise(text: str) -> str:
-    text = text.casefold().replace(" ", " ")
+    text = unicodedata.normalize("NFKC", text).translate(_INVISIBLE)   # NFKC: ligatures, no-break spaces
+    text = text.casefold()
     text = re.sub(r"[‘’‚′]", "'", text)
     text = re.sub(r"[“”„″]", '"', text)
     text = re.sub(r"[‐-―]", "-", text)
@@ -189,8 +198,12 @@ def check_output(answer: Answer, retrieved: Sequence[Chunk], canary: str) -> Gua
     chunks = {c.id: _normalise(c.text) for c in retrieved}
     for citation in answer.citations:
         quote = _normalise(citation.quote)
-        if citation.chunk_id not in chunks or len(quote) < MIN_QUOTE_CHARS or quote not in chunks[citation.chunk_id]:
-            return refuse("bad_citation")
+        if citation.chunk_id not in chunks:
+            return refuse("bad_citation", "unknown_chunk")
+        if len(quote) < MIN_QUOTE_CHARS:
+            return refuse("bad_citation", f"too_short, chunk {citation.chunk_id}")
+        if quote not in chunks[citation.chunk_id]:
+            return refuse("bad_citation", f"not_verbatim, chunk {citation.chunk_id}")
     return OK
 
 
@@ -222,5 +235,5 @@ class Guards:
                      canary: str) -> GuardResult:
         result = check_output(answer, retrieved, canary)
         if result.refused:
-            log.warning("answer withheld: %s (conversation %s)", result.code, conversation.id)
+            log.warning("answer withheld: %s (%s; conversation %s)", result.code, result.detail or "-", conversation.id)
         return result

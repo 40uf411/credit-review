@@ -180,6 +180,35 @@ def test_citations_that_do_not_hold_are_refused(citation, why):
     assert check_output(answer(citation), CHUNKS, CANARY).code == "bad_citation", why
 
 
+def test_invisible_pdf_characters_do_not_break_a_quote():
+    """The MCD's text is full of soft hyphens ("credit\u00adworthiness"); the model writes the word without them."""
+    chunk = Chunk("eu-8", "the creditor makes a thorough assessment of the consumer\u2019s credit\u00adworthiness",
+                  "mcd", "EU", "en")
+    assert check_output(answer(("eu-8", "a thorough assessment of the consumer's creditworthiness")), [chunk],
+                        CANARY).allowed
+
+
+DUTCH = Chunk("nl-thk-0015", "De maximale hoogte van het hypothecair krediet ten opzichte van de waarde van de woning "
+                             "bedraagt honderd procent.", "nl-thk", "NL", "nl")
+
+
+def test_a_quote_stays_in_the_language_of_its_source():
+    dutch = ("nl-thk-0015", "ten opzichte van de waarde van de woning bedraagt honderd procent")
+    assert check_output(answer(dutch), [DUTCH], CANARY).allowed
+    translated = ("nl-thk-0015", "relative to the value of the home is one hundred percent")
+    assert check_output(answer(translated), [DUTCH], CANARY).code == "bad_citation"
+
+
+@pytest.mark.parametrize(("citation", "detail"), [
+    (("nl-9", "may not exceed 100% of the market value"), "unknown_chunk"),
+    (("nl-3", "the property"), "too_short, chunk nl-3"),
+    (("nl-3", "must not be higher than the value of the home"), "not_verbatim, chunk nl-3"),
+])
+def test_the_log_says_which_check_a_citation_failed(citation, detail):
+    result = check_output(answer(citation), CHUNKS, CANARY)
+    assert result.detail == detail and result.message == MESSAGES["bad_citation"]     # the user sees no detail
+
+
 def test_one_bad_citation_withholds_the_whole_answer():
     good, bad = ("nl-3", "may not exceed 100% of the market value"), ("nl-9", "made up but long enough to count")
     assert check_output(answer(good, bad), CHUNKS, CANARY).code == "bad_citation"
@@ -233,4 +262,9 @@ def test_nothing_the_user_wrote_is_logged(tmp_path, caplog):
         guards.check_input(conversation(), secret)
         guards.check_output(conversation(), answer(text=secret), CHUNKS, CANARY)
     assert caplog.records and all(secret not in r.getMessage() for r in caplog.records)
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="assistant.guards"):
+        quote = f"must not be higher than {secret}"
+        guards.check_output(conversation(), answer(("nl-3", quote)), CHUNKS, CANARY)
+    assert "not_verbatim, chunk nl-3" in caplog.text and "IBAN" not in caplog.text
     assert all("BE71" not in r.getMessage() for r in caplog.records)
