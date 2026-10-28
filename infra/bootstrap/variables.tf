@@ -15,6 +15,18 @@ variable "github_repository" {
   default     = "40uf411/credit-review"
 }
 
+variable "github_owner_id" {
+  description = "Numeric ID of the repository owner, for OIDC subjects in the immutable-ID form (gh api repos/OWNER/REPO --jq .owner.id)."
+  type        = number
+  default     = 29804103
+}
+
+variable "github_repository_id" {
+  description = "Numeric ID of the repository, for OIDC subjects in the immutable-ID form (gh api repos/OWNER/REPO --jq .id)."
+  type        = number
+  default     = 1414290075
+}
+
 variable "name_prefix" {
   description = "Short prefix for resource names."
   type        = string

@@ -23,6 +23,10 @@ terraform output github_variables                 # set each one as a GitHub rep
 terraform output -raw backend_config > ../backend.hcl
 ```
 
+The GitHub identity trusts both forms of GitHub's OIDC subject: by name (`repo:owner/repo:...`) and with the
+immutable owner and repository IDs (`repo:owner@ID/repo@ID:...`), which GitHub now issues by default. For another
+repository, set `github_repository`, `github_owner_id` and `github_repository_id` (see `terraform.tfvars.example`).
+
 Commit the `.terraform.lock.hcl` that `init` creates (it pins the provider for every platform). Never commit
 `terraform.tfstate` or `terraform.tfvars` (both gitignored).
 
