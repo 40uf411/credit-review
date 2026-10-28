@@ -1,0 +1,59 @@
+# The assistant's sources. Downloaded and hash-checked by `python -m assistant.ingest`; never committed.
+#
+# sha256: empty until the first ingestion run prints it (job summary of ingest.yml). Pin it here after reading the
+# document once: from then on a changed document fails ingestion instead of silently changing the answers.
+documents:
+  - id: eu-mcd
+    title: Mortgage Credit Directive 2014/17/EU
+    issuer: European Parliament and Council
+    country: EU
+    language: en
+    effective: 2016-03-21
+    url: https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32014L0017
+    format: html
+    licence: "© European Union, reuse authorised (Commission Decision 2011/833/EU)"
+    sha256:
+
+  - id: eu-eba-lom
+    title: EBA Guidelines on loan origination and monitoring (EBA/GL/2020/06)
+    issuer: European Banking Authority
+    country: EU
+    language: en
+    effective: 2021-06-30
+    url: https://www.eba.europa.eu/sites/default/files/document_library/Publications/Guidelines/2020/Guidelines%20on%20loan%20origination%20and%20monitoring/884283/EBA%20GL%202020%2006%20Final%20Report%20on%20GL%20on%20loan%20origination%20and%20monitoring.pdf
+    format: pdf
+    licence: "© European Banking Authority, reproduction authorised with source acknowledged"
+    sha256:
+
+  - id: be-nbb-mortgage
+    title: NBB supervisory expectations for Belgian mortgage loans
+    issuer: National Bank of Belgium
+    country: BE
+    language: en
+    effective: 2020-01-01
+    url: https://www.nbb.be/en/node/220164
+    format: html
+    licence: "© National Bank of Belgium, reproduction authorised with source acknowledged"
+    sha256:
+
+  - id: fr-hcsf-credit
+    title: Décision D-HCSF-2021-7 relative aux conditions d'octroi de crédits immobiliers
+    issuer: Haut Conseil de stabilité financière
+    country: FR
+    language: fr
+    effective: 2022-01-01
+    url: https://www.economie.gouv.fr/hcsf/mesures/mesure-relative-loctroi-de-credits-immobiliers-0
+    format: html
+    licence: "Licence Ouverte / Open Licence (Etalab)"
+    sha256:
+
+  - id: nl-thk
+    title: Tijdelijke regeling hypothecair krediet
+    issuer: Ministerie van Financiën
+    country: NL
+    language: nl
+    effective: 2013-01-01
+    url: https://wetten.overheid.nl/BWBR0032503/
+    format: html
+    licence: "Public domain (Dutch legislation, Auteurswet art. 11)"
+    sha256:

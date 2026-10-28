@@ -210,7 +210,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if grep -q 'azurerm_container_app.api will be updated' plan.txt; then
+          if grep -qE 'azurerm_container_app\.(api|assistant) will be updated' plan.txt; then
             gh workflow run deploy.yml --ref main -R "$GITHUB_REPOSITORY"
             echo "App settings changed: deployment started." >> "$GITHUB_STEP_SUMMARY"
           fi

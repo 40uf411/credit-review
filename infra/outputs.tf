@@ -20,5 +20,9 @@ output "github_variables" {
     CONTAINER_APP      = azurerm_container_app.api.name
     APP_RESOURCE_GROUP = data.azurerm_resource_group.app.name
     API_URL            = "https://${azurerm_container_app.api.ingress[0].fqdn}"
+    ASSISTANT_APP      = azurerm_container_app.assistant.name
+    ASSISTANT_URL      = "https://${azurerm_container_app.assistant.ingress[0].fqdn}"
+    SEARCH_ENDPOINT    = "https://${azurerm_search_service.this.name}.search.windows.net"
+    SHIELDS_ENDPOINT   = "https://${azurerm_cognitive_account.content_safety.custom_subdomain_name}.cognitiveservices.azure.com/"
   }
 }

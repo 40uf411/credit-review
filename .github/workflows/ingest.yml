@@ -1,0 +1,62 @@
+name: Ingest corpus
+
+# Build the assistant's search index from assistant/corpus/manifest.yaml: download, hash check, chunk, Prompt Shields
+# document scan (flagged chunks are quarantined), embed, index. The report (chunks per document, hashes to pin,
+# quarantined chunks) goes to the job summary. Signs in with OIDC; no key.
+#
+# Needs repository variables AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_OPENAI_ENDPOINT,
+# SEARCH_ENDPOINT and SHIELDS_ENDPOINT (the last two from `terraform output github_variables`).
+
+on:
+  push:
+    branches: [main]
+    paths: ["assistant/corpus/**", "assistant/ingest.py", ".github/workflows/ingest.yml"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Download, check and chunk only (no Azure changes)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ingest-dev
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.13.5"
+
+jobs:
+  ingest:
+    name: Build the index
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.13"
+          enable-cache: true
+      - name: Install
+        run: uv sync --locked --no-default-groups
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        if: ${{ !inputs.dry_run }}
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Ingest
+        env:
+          CREDIT_REVIEW_LLM_BASE_URL: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          ASSISTANT_SEARCH_ENDPOINT: ${{ vars.SEARCH_ENDPOINT }}
+          ASSISTANT_SHIELDS_ENDPOINT: ${{ vars.SHIELDS_ENDPOINT }}
+          DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: |
+          # shellcheck disable=SC2086  # DRY_RUN is empty or one flag
+          uv run --no-sync python -m assistant.ingest $DRY_RUN
