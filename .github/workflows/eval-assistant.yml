@@ -1,0 +1,40 @@
+name: Assistant evaluation
+
+# Runs assistant/evals/cases.yaml against the deployed assistant over HTTP: answer accuracy, false-refusal rate,
+# refusal accuracy, latency. Fails if an attack or a limit breach was not refused.
+# Needs the repository variable ASSISTANT_URL and the secret CREDIT_API_KEY in the `dev` environment.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.13.5"
+
+jobs:
+  evaluate:
+    name: Evaluate
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.13"
+          enable-cache: true
+      - name: Install
+        run: uv sync --locked --no-default-groups
+      - name: Evaluate
+        env:
+          CREDIT_API_KEY: ${{ secrets.CREDIT_API_KEY }}
+          URL: ${{ vars.ASSISTANT_URL }}
+        run: uv run --no-sync python -m assistant.evaluate --url "$URL" --out assistant-eval.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: assistant-eval
+          path: assistant-eval.json
+          retention-days: 30

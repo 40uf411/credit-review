@@ -55,6 +55,8 @@ class Document:
 class Report:
     rows: list[dict[str, Any]] = field(default_factory=list)
     quarantined: list[str] = field(default_factory=list)
+    indexed: int | None = None
+    error: str = ""
 
     def markdown(self) -> str:
         lines = ["### Corpus ingestion", "", "| Document | Status | Chunks | sha256 |", "|---|---|---|---|"]
@@ -63,6 +65,10 @@ class Report:
         if self.quarantined:
             lines += ["", f"**Quarantined by Prompt Shields ({len(self.quarantined)}):** "
                       + ", ".join(f"`{q}`" for q in self.quarantined)]
+        if self.indexed is not None:
+            lines += ["", f"**Indexed {self.indexed} chunks.**"]
+        if self.error:
+            lines += ["", f"**Failed:** {self.error}"]
         unpinned = [r for r in self.rows if r.get("pinned") is False]
         if unpinned:
             lines += ["", "Pin these hashes in `assistant/corpus/manifest.yaml`: "
@@ -270,15 +276,23 @@ def run(args: argparse.Namespace, client: httpx.Client | None = None, shields: A
 
     from assistant.config import Settings
     settings = Settings.from_env()
+    if settings.missing() and (shields is None or embedder is None):
+        report.error = "missing settings: " + ", ".join(settings.missing())
+        return report, 1
     if shields is None:
         from assistant.shields import PromptShields
         shields = PromptShields(settings.shields_endpoint)
     if embedder is None:
         from assistant.retriever import AzureEmbedder
         embedder = AzureEmbedder(settings.openai_endpoint, settings.embedding_deployment)
-    kept, report.quarantined = scan(chunks, shields)
-    vectors = embedder.embed([c.text for c in kept])
-    indexer(settings.search_endpoint, settings.search_index, kept, vectors, {d.id: d.title for d in docs})
+    try:
+        kept, report.quarantined = scan(chunks, shields)
+        vectors = embedder.embed([c.text for c in kept])
+        indexer(settings.search_endpoint, settings.search_index, kept, vectors, {d.id: d.title for d in docs})
+    except Exception as exc:          # the download report above is still worth printing
+        report.error = f"{type(exc).__name__}: {str(exc)[:300]}"
+        return report, 1
+    report.indexed = len(kept)
     return report, 0
 
 

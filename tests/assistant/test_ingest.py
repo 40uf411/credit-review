@@ -100,3 +100,23 @@ def test_manifest_entries_are_checked(tmp_path, bad):
     path.write_text(yaml.safe_dump({"documents": [{**DOC.__dict__, **bad}]}))
     with pytest.raises(ValueError):
         load_manifest(path)
+
+
+def test_missing_settings_stop_before_any_azure_call_and_keep_the_report(tmp_path, monkeypatch):
+    for name in ("ASSISTANT_SEARCH_ENDPOINT", "ASSISTANT_SHIELDS_ENDPOINT", "CREDIT_REVIEW_LLM_BASE_URL"):
+        monkeypatch.delenv(name, raising=False)
+    report, status = run(argparse.Namespace(manifest=write_manifest(tmp_path), dry_run=False), client=client())
+    text = report.markdown()
+    assert status == 1 and "missing settings: ASSISTANT_SEARCH_ENDPOINT" in text and "| `nl-thk` | ok | 2 |" in text
+
+
+def test_an_azure_failure_keeps_the_download_report(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASSISTANT_SEARCH_ENDPOINT", "https://s.search.windows.net")
+
+    class Broken:
+        def analyze(self, user_prompt, documents=()):
+            raise RuntimeError("403")
+
+    report, status = run(argparse.Namespace(manifest=write_manifest(tmp_path), dry_run=False), client=client(),
+                         shields=Broken(), embedder=object())
+    assert status == 1 and "Failed:** RuntimeError: 403" in report.markdown() and report.rows[0]["chunks"] == 2
