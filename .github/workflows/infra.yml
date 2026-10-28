@@ -3,7 +3,7 @@ name: Infrastructure
 # Terraform for infra/: checked on every PR that touches it, with the plan posted on the PR; applied on main.
 # Signs in to Azure with OIDC (the bootstrap's identity); no key or password is stored anywhere.
 # Needs repository variables AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, TFSTATE_RG, TFSTATE_ACCOUNT,
-# MODEL_USER_OBJECT_IDS (JSON list; [] for none) and optionally BUDGET_EMAILS (JSON list).
+# MODEL_USER_OBJECT_IDS (your Entra object id, or a list; [] for none) and optionally BUDGET_EMAILS.
 
 on:
   pull_request:
@@ -30,8 +30,6 @@ env:
   ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
   TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-  TF_VAR_model_user_object_ids: ${{ vars.MODEL_USER_OBJECT_IDS }}
-  TF_VAR_budget_emails: ${{ vars.BUDGET_EMAILS || '[]' }}
 
 jobs:
   checks:
@@ -89,9 +87,18 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-      - name: Required variables
+      # List variables, written to the environment as JSON lists. The repository variables are accepted as a JSON list,
+      # one value, or comma-separated values, so a missing quote or a pasted smart quote is not a failed run.
+      - name: Variables
+        env:
+          OBJECT_IDS: ${{ vars.MODEL_USER_OBJECT_IDS }}
+          EMAILS: ${{ vars.BUDGET_EMAILS }}
         run: |
-          [ -n "$TF_VAR_model_user_object_ids" ] || { echo "::error::Set the repository variable MODEL_USER_OBJECT_IDS (a JSON list; [] for none), or a plan would remove the access it grants."; exit 1; }
+          as_list() { jq -cn --arg v "$1" '$v | gsub("[\\[\\]\"“”‘’'"'"']"; "") | split("[,;\\s]+"; null) | map(select(length > 0))'; }
+          [ -n "$OBJECT_IDS" ] || { echo "::error::Set the repository variable MODEL_USER_OBJECT_IDS (your Entra object id; [] for none), or a plan would remove the access it grants."; exit 1; }
+          echo "TF_VAR_model_user_object_ids=$(as_list "$OBJECT_IDS")" >> "$GITHUB_ENV"
+          echo "TF_VAR_budget_emails=$(as_list "$EMAILS")" >> "$GITHUB_ENV"
+          echo "Model users: $(as_list "$OBJECT_IDS" | jq length) · budget e-mails: $(as_list "$EMAILS" | jq length)"
       - name: Init
         run: >
           terraform init -backend-config="resource_group_name=${{ vars.TFSTATE_RG }}"
@@ -157,9 +164,18 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-      - name: Required variables
+      # List variables, written to the environment as JSON lists. The repository variables are accepted as a JSON list,
+      # one value, or comma-separated values, so a missing quote or a pasted smart quote is not a failed run.
+      - name: Variables
+        env:
+          OBJECT_IDS: ${{ vars.MODEL_USER_OBJECT_IDS }}
+          EMAILS: ${{ vars.BUDGET_EMAILS }}
         run: |
-          [ -n "$TF_VAR_model_user_object_ids" ] || { echo "::error::Set the repository variable MODEL_USER_OBJECT_IDS (a JSON list; [] for none), or the apply would remove the access it grants."; exit 1; }
+          as_list() { jq -cn --arg v "$1" '$v | gsub("[\\[\\]\"“”‘’'"'"']"; "") | split("[,;\\s]+"; null) | map(select(length > 0))'; }
+          [ -n "$OBJECT_IDS" ] || { echo "::error::Set the repository variable MODEL_USER_OBJECT_IDS (your Entra object id; [] for none), or the apply would remove the access it grants."; exit 1; }
+          echo "TF_VAR_model_user_object_ids=$(as_list "$OBJECT_IDS")" >> "$GITHUB_ENV"
+          echo "TF_VAR_budget_emails=$(as_list "$EMAILS")" >> "$GITHUB_ENV"
+          echo "Model users: $(as_list "$OBJECT_IDS" | jq length) · budget e-mails: $(as_list "$EMAILS" | jq length)"
       - name: Init
         run: >
           terraform init -backend-config="resource_group_name=${{ vars.TFSTATE_RG }}"

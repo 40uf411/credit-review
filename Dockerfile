@@ -42,7 +42,8 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONDONTWRITEBYTECODE=1 \
     CREDIT_REVIEW_CACHE_DIR=/tmp/credit_review_cache \
     CREDIT_REVIEW_DATA_DIR=/tmp/credit_review_data \
-    CREDIT_REVIEW_PRICES_FILE=/app/config/model_prices.yaml
+    CREDIT_REVIEW_PRICES_FILE=/app/config/model_prices.yaml \
+    CREDIT_REVIEW_POLICY=/app/policy/example_bank_v3.2.yaml
 
 USER app
 EXPOSE 8000

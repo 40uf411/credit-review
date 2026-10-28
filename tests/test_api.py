@@ -116,3 +116,14 @@ def test_a_run_that_stopped_moving_is_stale_and_can_be_posted_again(client, uplo
     assert client.get(f"/dossiers/{dossier_id}").json()["state"] == "stale"
     assert client.post("/dossiers", files=files, data=form).status_code == 202     # resumes without ?rerun
     assert client.get(f"/dossiers/{dossier_id}").json()["state"] == "done"
+
+
+def test_the_policy_is_found_wherever_the_package_is_installed(tmp_path, monkeypatch):
+    """In the image the package lives in site-packages: the policy comes from the setting or the working directory."""
+    monkeypatch.delenv("CREDIT_REVIEW_POLICY", raising=False)
+    (tmp_path / "policy").mkdir()
+    (tmp_path / "policy" / "example_bank_v3.2.yaml").write_text("x")
+    monkeypatch.chdir(tmp_path)
+    assert api.policy_path() == api.POLICY_FILE
+    monkeypatch.setenv("CREDIT_REVIEW_POLICY", "/somewhere/else.yaml")
+    assert str(api.policy_path()) == "/somewhere/else.yaml"

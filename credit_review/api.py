@@ -51,8 +51,7 @@ from credit_review.storage import Store, store_from_env  # noqa: E402
 log = logging.getLogger("credit_review.api")
 tracer = trace.get_tracer(__name__)
 
-ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_POLICY = ROOT / "policy" / "example_bank_v3.2.yaml"
+POLICY_FILE = Path("policy") / "example_bank_v3.2.yaml"
 MAX_FILES = 25
 MAX_BYTES = 15 * 1024 * 1024
 STALE_AFTER = 15 * 60          # seconds without progress before a running assessment is reported as stale
@@ -69,9 +68,19 @@ app = FastAPI(
 
 # ------------------------------------------------------------------ dependencies (overridden in tests)
 
+def policy_path() -> Path:
+    """CREDIT_REVIEW_POLICY, else the policy next to the working directory (the CLI's default; /app in the image),
+    else the one in the source tree. The package itself may be installed anywhere, so no path is relative to it."""
+    if os.environ.get("CREDIT_REVIEW_POLICY"):
+        return Path(os.environ["CREDIT_REVIEW_POLICY"])
+    if POLICY_FILE.exists():
+        return POLICY_FILE
+    return Path(__file__).resolve().parents[1] / POLICY_FILE
+
+
 @lru_cache(maxsize=1)
 def get_policy() -> tuple[Policy, str]:
-    report = load_policy(os.environ.get("CREDIT_REVIEW_POLICY") or DEFAULT_POLICY)
+    report = load_policy(policy_path())
     if not report.ok or report.policy is None:
         raise RuntimeError("policy is not valid: " + "; ".join(report.errors[:3]))
     return report.policy, report.sha256
