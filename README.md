@@ -61,14 +61,33 @@ Or in a container (documents mounted read-only, cached model results only):
 docker build -t credit-review .
 docker run --rm -v "$PWD/case_pack:/data:ro" -e CREDIT_REVIEW_LLM_OFFLINE=1 \
   credit-review credit-review /data/dossier --decision-date 2026-10-12 --out /tmp/out
+docker run --rm -p 8000:8000 -e CREDIT_API_KEY=dev credit-review     # the HTTP service; Swagger at /docs
 ```
 
-**Comparing models.** `python -m credit_review.model_eval run --fresh --out runs/eval/<model>.json` scores the
-configured model on the reference set (text documents and scans separately), with cost per dossier and latency;
-`python -m credit_review.model_eval table runs/eval/*.json` compares runs. Prices per model are in
+**Comparing models.** `python -m credit_review.model_eval run --fresh` scores the
+configured model on the reference set (text documents and scans separately), with cost per dossier and latency.
+Each run is saved as `runs/eval/<model>[-<effort>].json`, and
+`python -m credit_review.model_eval table "runs/eval/*.json"` compares them (the pattern is expanded by the tool,
+so it works in PowerShell too). Prices per model are in
 `config/model_prices.yaml`; a model without a price is reported as "n/a", never as free. For reasoning models,
 `--reasoning-effort low|medium|high` compares the same model at different effort. The `eval.yml` workflow does the
 same for Azure deployments in CI, with entries like `gpt-5.4-mini:low,gpt-5.4-mini:medium`.
+
+**Model comparison results** (sample dossier, 186 hand-labelled values, Azure OpenAI in the EU data zone, prompt
+extract-v2). Each configuration was run twice:
+
+| Model | Accuracy | Text documents | Scans | Cost per dossier | Latency p50 / p95 |
+|---|---|---|---|---|---|
+| gpt-5.4-mini @ medium | 99.5% / 97.9% (185, 182) | 99.1% / 96.5% | 100% / 100% | 0.125 USD | 8.8 s / 19.7 s |
+| gpt-5.4-mini @ low | 98.4% / 96.8% (183, 180) | — / 97.4% | 100% / 95.7% | 0.072 USD | 5.7 s / 9.4 s |
+| claude-sonnet-5-5 (reference, Anthropic API) | 100% (186) | 100% | 100% | n/a | 7.9 s / 14.6 s |
+
+Cost and latency are from the second runs (prices were recorded after the first). Two runs of the same configuration
+differ by up to 3 values, which is as large as the difference between low and
+medium effort. The service therefore uses **low**: about 60% of the cost and half the tail latency, for an accuracy
+difference that one run cannot distinguish from noise, and every value is shown to the analyst with its evidence.
+Effort is a Terraform variable (`infra/variables.tf`), so revisiting the choice is a one-line PR with a plan.
+gpt-5.5 was the intended "full model" side; its quota was requested and denied, so it is not in the table.
 
 Every model call is cached under `.credit_review_cache/`, keyed by provider, model, prompt,
 schema and document. A second run is instant and identical. With `CREDIT_REVIEW_LLM_OFFLINE=1`
@@ -86,6 +105,28 @@ reuse an assessment's documents and extractions under another policy, and `compa
 reports the changes. The validator rejects parameters or rule descriptions that disagree
 with their cited policy text.
 
+## Running in Azure
+
+```
+GitHub ── infra.yml: PR → Terraform plan as a PR comment; main → apply
+       └─ deploy.yml: build → scan → push to ACR → new revision with no traffic → smoke + end-to-end test → promote
+Azure (Sweden Central, everything Entra ID; no keys exist):
+  Container Apps: credit-api (FastAPI)  ── managed identity ──▶ Foundry (gpt-5.4-mini, EU data zone)
+                                                          ├──▶ Blob Storage: uploads, status, results, model cache
+                                                          └──▶ Application Insights (traces: tokens, cost, cache hits)
+```
+
+```bash
+curl -H "X-API-Key: $KEY" -F "files=@case_pack/dossier/payslip_may2026.pdf" ... \
+     -F decision_date=2026-10-12 $API_URL/dossiers             # 202 {"id": ..., "status_url": ...}
+curl -H "X-API-Key: $KEY" $API_URL/dossiers/<id>               # pending → running → done
+curl -H "X-API-Key: $KEY" $API_URL/dossiers/<id>/assessment    # the same JSON the CLI writes
+```
+
+The assessment runs as a background task in the service; why that is acceptable here, and what replaces it in
+production, is in `docs/adr/0002-container-apps.md`. Uploads expire after 30 days. Setup steps are in
+`infra/README.md`.
+
 ## Development and CI
 
 ```bash
@@ -100,6 +141,8 @@ uv run pre-commit install    # the same checks before every commit
 | `ci.yml` | push to `main`, PRs | Ruff, Pyright, tests on Python 3.12 and 3.13 with coverage, **every policy YAML validated against its source text**, copyleft-licence check, secret scan |
 | `container.yml` | push to `main`, PRs | Image build, smoke test (CLI, policy validation, non-root user), Trivy image and Dockerfile scans (fixable HIGH/CRITICAL fail), publish to GHCR with SBOM and provenance on `main` |
 | `policy-impact.yml` | PRs touching `policy/`, manual | Validates the changed policy, runs the sample dossier under the policy before and after, and posts the checks whose outcome changes as one PR comment |
+| `infra.yml` | PRs and `main` touching `infra/` | `terraform fmt` and `validate`, Trivy configuration scan; the plan posted on the PR; apply on `main` (environment `dev`) |
+| `deploy.yml` | `main` (app changes), manual | Build, Trivy (fixable HIGH/CRITICAL fail), push to ACR, a new revision tested on a `staging` label (health, auth, the sample dossier end to end), then 100% of traffic; automatic rollback on failure |
 | `eval.yml` | manual | Scores Azure OpenAI deployments on the reference set and posts a comparison (OIDC sign-in, no stored key) |
 | `codeql.yml` | push, PRs, weekly | CodeQL security analysis of the Python code |
 | `dependency-review.yml` | PRs | Blocks new dependencies with high-severity vulnerabilities or copyleft licences |
@@ -121,6 +164,10 @@ Decisions are recorded in `docs/adr/`.
 | `credit_review/extract.py` | Policy-driven extraction; code re-parses values and locates every quote |
 | `credit_review/llm.py` | Anthropic, OpenAI-compatible (LM Studio) and Azure OpenAI behind one cached interface |
 | `credit_review/prices.py`, `config/model_prices.yaml` | Cost of each model call from its token usage |
+| `credit_review/api.py` | The HTTP service: upload, background assessment, status, result |
+| `credit_review/storage.py` | Local folder or Azure Blob, behind one interface (uploads, results, the model cache) |
+| `credit_review/telemetry.py` | Traces to Application Insights, signed in with the managed identity |
+| `infra/` | Terraform: bootstrap (state, GitHub OIDC identity), Foundry, Container Apps, registry, storage, monitoring, budget |
 | `credit_review/model_eval.py` | Score a model on the reference set; compare models |
 | `credit_review/golden.py` | Hand-labelled reference: offline replay and accuracy scoring |
 | `credit_review/documents.py` | Document checklist: present, missing, duplicated (by content, e.g. the same month twice) |

@@ -48,7 +48,7 @@ class LLMCallInfo(BaseModel):
     prompt_version: str
     usage: dict[str, Any] = Field(default_factory=dict)
     seconds: float = 0.0
-    cost_eur: float | None = None              # cost of the call when it was made; None = no price known
+    cost: float | None = None              # cost of the call when it was made; None = no price known
 
 
 class DocumentExtraction(BaseModel):

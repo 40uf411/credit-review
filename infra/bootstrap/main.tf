@@ -6,12 +6,23 @@ locals {
 
   # GitHub OIDC subjects this identity trusts. Anything else (another repo, a fork, another branch
   # outside an environment) cannot get a token for it.
-  github_subjects = {
-    pull-request = "repo:${var.github_repository}:pull_request"
-    main         = "repo:${var.github_repository}:ref:refs/heads/main"
-    env-dev      = "repo:${var.github_repository}:environment:dev"
-    env-prod     = "repo:${var.github_repository}:environment:prod"
+  #
+  # GitHub issues the subject in one of two forms: by name (repo:owner/repo:...) or, now the default, with the
+  # immutable owner and repository IDs (repo:owner@123/repo@456:...). The ID form means a deleted and recreated
+  # account or repository with the same name cannot inherit this trust. Both forms are listed, for the same four
+  # contexts.
+  github_contexts = {
+    pull-request = "pull_request"
+    main         = "ref:refs/heads/main"
+    env-dev      = "environment:dev"
+    env-prod     = "environment:prod"
   }
+  github_repo_by_id = format("%s@%d/%s@%d", split("/", var.github_repository)[0], var.github_owner_id,
+  split("/", var.github_repository)[1], var.github_repository_id)
+  github_subjects = merge(
+    { for k, ctx in local.github_contexts : k => "repo:${var.github_repository}:${ctx}" },
+    { for k, ctx in local.github_contexts : "id-${k}" => "repo:${local.github_repo_by_id}:${ctx}" },
+  )
 }
 
 # ------------------------------------------------------------------ the application's resource group

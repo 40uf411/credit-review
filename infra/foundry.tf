@@ -52,9 +52,10 @@ resource "azurerm_cognitive_deployment" "model" {
   }
 }
 
-# Who may call the models. The application's own managed identity is added with the Container Apps (Tuesday).
+# Who may call the models: the service, the evaluation workflow, and people running evaluations locally.
 locals {
   model_users = merge(
+    { app = azurerm_user_assigned_identity.app.principal_id },
     { github = data.azurerm_user_assigned_identity.github.principal_id },
     { for i, id in var.model_user_object_ids : "user-${i}" => id },
   )

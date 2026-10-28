@@ -55,6 +55,16 @@ jobs:
           docker run --rm credit-review:ci python -m credit_review.policy policy/example_bank_v3.2.yaml
           test "$(docker run --rm credit-review:ci id -u)" != "0"
           docker run --rm credit-review:ci sh -c '! python -c "import pip" 2>/dev/null'   # no pip at run time
+          # The service starts, answers its health check and refuses requests without the key.
+          docker run -d --name api -p 8000:8000 -e CREDIT_API_KEY=smoke credit-review:ci
+          trap 'docker logs api; docker rm -f api > /dev/null' EXIT
+          for _ in $(seq 30); do curl -fsS localhost:8000/healthz && break; sleep 1; done
+          expect() {   # expect <status> <path>
+            code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:8000$2")
+            [ "$code" = "$1" ] || { echo "::error::GET $2 answered $code, expected $1"; exit 1; }
+          }
+          expect 401 /dossiers/000000000000000000000000
+          expect 200 /readyz
 
       # Vulnerabilities only. Secrets in our own code are caught by gitleaks in CI; the image's secret scanner
       # flags placeholder text in third-party SDK docstrings, which is noise rather than findings.
@@ -69,7 +79,7 @@ jobs:
 
       - name: Upload scan to code scanning
         # Fork PRs get a read-only token, so they skip the upload.
-        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always() && hashFiles('trivy-image.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: trivy-image.sarif

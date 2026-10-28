@@ -1,0 +1,190 @@
+name: Deploy
+
+# Build the image, scan it, push it to the registry, and roll it out to Container Apps without downtime:
+# the new revision gets no traffic until it has passed a smoke test and an end-to-end run on its own label.
+# If any check fails, traffic stays on the previous revision and the new one is deactivated.
+#
+# Needs repository variables AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, ACR_NAME, CONTAINER_APP,
+# APP_RESOURCE_GROUP and API_URL (printed by `terraform output github_variables` in infra/), and the secret
+# CREDIT_API_KEY in the `dev` environment.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "credit_review/**"
+      - "policy/**"
+      - "config/**"
+      - "Dockerfile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  APP: ${{ vars.CONTAINER_APP }}
+  RG: ${{ vars.APP_RESOURCE_GROUP }}
+  ACR: ${{ vars.ACR_NAME }}
+
+jobs:
+  deploy:
+    name: Build and roll out
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+      url: ${{ vars.API_URL }}/docs
+    permissions:
+      contents: read
+      id-token: write          # OIDC sign-in to Azure
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Required settings
+        env:
+          API_KEY: ${{ secrets.CREDIT_API_KEY }}
+        run: |
+          missing=""
+          for v in APP RG ACR API_KEY; do [ -n "${!v}" ] || missing="$missing $v"; done
+          [ -z "$missing" ] || { echo "::error::Missing:$missing (see the header of deploy.yml)"; exit 1; }
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: credit-review:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The deployed image must have no fixable HIGH or CRITICAL vulnerability.
+      - name: Scan image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: credit-review:${{ github.sha }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Push
+        id: push
+        run: |
+          az acr login --name "$ACR"
+          image="$ACR.azurecr.io/credit-review:$GITHUB_SHA"
+          docker tag "credit-review:$GITHUB_SHA" "$image"
+          docker push "$image"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
+      - name: Create the new revision (no traffic)
+        id: revision
+        env:
+          API_KEY: ${{ secrets.CREDIT_API_KEY }}
+          IMAGE: ${{ steps.push.outputs.image }}
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt --only-show-errors
+          # Pin traffic to what serves now, so the new revision starts with none.
+          current=$(az containerapp revision list -n "$APP" -g "$RG" \
+            --query "[?properties.active && properties.trafficWeight > \`0\`] | [0].name" -o tsv)
+          if [ -n "$current" ]; then
+            az containerapp ingress traffic set -n "$APP" -g "$RG" --revision-weight "$current=100" -o none
+          fi
+          echo "previous=$current" >> "$GITHUB_OUTPUT"
+
+          az containerapp secret set -n "$APP" -g "$RG" --secrets "api-key=$API_KEY" -o none
+          az containerapp ingress update -n "$APP" -g "$RG" --target-port 8000 -o none
+
+          suffix="r${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:7}"
+          az containerapp update -n "$APP" -g "$RG" --image "$IMAGE" --revision-suffix "$suffix" -o none
+          new="$APP--$suffix"
+          echo "new=$new" >> "$GITHUB_OUTPUT"
+
+          az containerapp revision label add -n "$APP" -g "$RG" --revision "$new" --label staging --yes -o none
+          fqdn=$(az containerapp show -n "$APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
+          echo "staging_url=https://$APP---staging.${fqdn#*.}" >> "$GITHUB_OUTPUT"
+          echo "New revision \`$new\` (previous: \`${current:-none}\`)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test
+        env:
+          URL: ${{ steps.revision.outputs.staging_url }}
+          API_KEY: ${{ secrets.CREDIT_API_KEY }}
+        run: |
+          for _ in $(seq 60); do curl -fsS "$URL/healthz" && break; sleep 5; done
+          curl -fsS "$URL/readyz"
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/dossiers/000000000000000000000000")
+          [ "$code" = 401 ] || { echo "::error::without a key the API answered $code, not 401"; exit 1; }
+
+      # The sample dossier through the real service: upload, background assessment, result. The first run pays for
+      # the model calls (a few cents); later ones are answered from the model cache in Blob and cost nothing.
+      - name: End-to-end run
+        env:
+          URL: ${{ steps.revision.outputs.staging_url }}
+          API_KEY: ${{ secrets.CREDIT_API_KEY }}
+        run: |
+          files=()
+          for f in case_pack/dossier/*.pdf; do files+=(-F "files=@$f;type=application/pdf"); done
+          id=$(curl -fsS -H "X-API-Key: $API_KEY" "${files[@]}" -F decision_date=2026-10-12 \
+                 "$URL/dossiers?rerun=true" | jq -r .id)
+          for _ in $(seq 120); do
+            status=$(curl -fsS -H "X-API-Key: $API_KEY" "$URL/dossiers/$id")
+            state=$(jq -r .state <<<"$status")
+            [ "$state" = done ] || [ "$state" = failed ] && break
+            sleep 5
+          done
+          jq . <<<"$status"
+          [ "$state" = done ] || { echo "::error::the assessment ended as $state"; exit 1; }
+          curl -fsS -H "X-API-Key: $API_KEY" "$URL/dossiers/$id/assessment" > assessment.json
+          jq -e '(.articles | length > 0) and all(.articles[]; .outcome != null)' assessment.json > /dev/null \
+            || { echo "::error::the assessment has no article outcomes"; exit 1; }
+          # A model that cannot be reached (role, quota, endpoint) still gives an assessment, with every document
+          # unread. That must fail the deployment, not pass it.
+          if jq -e '[.warnings[] | select(test("extraction failed"))] | length > 0' assessment.json > /dev/null; then
+            jq -r '.warnings[]' assessment.json; echo "::error::documents could not be read"; exit 1
+          fi
+          articles=$(jq -r '.articles[] | "| \(.id) | \(.outcome) |"' assessment.json)
+          {
+            echo "### End-to-end run on the new revision"
+            jq -r '"Model calls: \(.summary.model_calls) (\(.summary.cached_calls) from the cache) · cost of this run: \(.summary.cost // "n/a")"' <<<"$status"
+            echo; echo "| Article | Outcome |"; echo "|---|---|"; echo "$articles"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Promote
+        env:
+          NEW: ${{ steps.revision.outputs.new }}
+        run: |
+          az containerapp ingress traffic set -n "$APP" -g "$RG" --revision-weight "$NEW=100" -o none
+          az containerapp revision label remove -n "$APP" -g "$RG" --label staging -o none
+          for r in $(az containerapp revision list -n "$APP" -g "$RG" \
+                       --query "[?properties.active && name != '$NEW'].name" -o tsv); do
+            az containerapp revision deactivate -n "$APP" -g "$RG" --revision "$r" -o none
+          done
+          echo "Promoted \`$NEW\` to 100% of traffic." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Roll back
+        if: failure() && steps.revision.outputs.new != ''
+        env:
+          NEW: ${{ steps.revision.outputs.new }}
+          PREVIOUS: ${{ steps.revision.outputs.previous }}
+        run: |
+          if [ -n "$PREVIOUS" ]; then
+            az containerapp ingress traffic set -n "$APP" -g "$RG" --revision-weight "$PREVIOUS=100" -o none
+          fi
+          az containerapp revision label remove -n "$APP" -g "$RG" --label staging -o none || true
+          az containerapp revision deactivate -n "$APP" -g "$RG" --revision "$NEW" -o none || true
+          echo "Rolled back: traffic stays on \`${PREVIOUS:-none}\`; \`$NEW\` deactivated." >> "$GITHUB_STEP_SUMMARY"

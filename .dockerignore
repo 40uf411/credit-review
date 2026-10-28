@@ -15,6 +15,7 @@ htmlcov
 dist
 runs
 .credit_review_cache
+.credit_review_data
 case_pack
 golden
 tests

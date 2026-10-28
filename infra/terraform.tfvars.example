@@ -5,3 +5,6 @@ subscription_id = "00000000-0000-0000-0000-000000000000"
 model_user_object_ids = ["00000000-0000-0000-0000-000000000000"]
 
 # Model deployments default to variables.tf; override here only to change capacity or add gpt-5.5 once it has quota.
+
+# Budget alerts for the application's resource group (none when empty).
+budget_emails = ["you@example.com"]

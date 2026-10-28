@@ -11,13 +11,23 @@ dependencies = [
     "anthropic>=0.40",
     "openai>=1.40",
     "azure-identity>=1.19",
+    "fastapi>=0.162.0",
+    "uvicorn>=0.54.0",
+    "python-multipart>=0.0.32",
+    "azure-storage-blob>=12.31.0",
+    "opentelemetry-api>=1.45.1",
+    "azure-monitor-opentelemetry>=1.8.11",
 ]
 
 [project.scripts]
 credit-review = "credit_review.pipeline:main"
 
 [dependency-groups]
-test = ["pytest>=8.0", "pytest-cov>=5.0"]
+test = [
+    "httpx>=0.28.1",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
 lint = ["ruff>=0.6", "pyright>=1.1.380", "types-PyYAML>=6.0"]
 dev = [
     { include-group = "test" },
