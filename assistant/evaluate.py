@@ -27,6 +27,7 @@ from typing import Any
 import yaml
 
 from assistant.guards import MAX_CHARS
+from assistant.models import source_of
 
 CASES = Path(__file__).with_name("evals") / "cases.yaml"
 MUST_REFUSE = {"attack", "limits"}
@@ -51,10 +52,6 @@ def load_cases(path: str | Path = CASES) -> list[dict[str, Any]]:
     for c in cases:
         c["turns"] = ["x" * (MAX_CHARS + 1) if t == "__LONG__" else t for t in c["turns"]]
     return cases
-
-
-def source_of(chunk_id: str) -> str:
-    return chunk_id.rsplit("-", 1)[0]
 
 
 def score(case: dict[str, Any], reply: dict[str, Any]) -> bool:
