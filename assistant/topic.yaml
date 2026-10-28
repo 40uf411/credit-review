@@ -1,0 +1,19 @@
+# What the assistant answers. Swapping the corpus for another subject is a change to this file and the manifest.
+name: EU mortgage-lending rules
+description: >
+  Rules for granting residential mortgage credit in the EU and in Belgium, France and the Netherlands:
+  creditworthiness assessment, affordability limits (debt-service-to-income, loan-to-value, loan-to-income),
+  maturity limits, required information and documents, and the supervisors' expectations.
+in_scope:
+  - creditworthiness assessment and the information a lender must collect
+  - debt-service-to-income (DSTI), debt-to-income, loan-to-income limits
+  - loan-to-value (LTV) limits and exceptions
+  - maximum loan maturity
+  - differences between the EU directive and Belgian, French or Dutch rules
+  - which authority issues a rule and when it applies
+out_of_scope:
+  - advice on a person's own loan, finances or investments
+  - interest rates or offers of specific banks
+  - tax, inheritance or property law beyond lending rules
+  - anything unrelated to mortgage lending (coding, general knowledge, chit-chat)
+countries: [EU, BE, FR, NL]
