@@ -17,6 +17,7 @@ dependencies = [
     "azure-storage-blob>=12.31.0",
     "opentelemetry-api>=1.45.1",
     "azure-monitor-opentelemetry>=1.8.11",
+    "httpx>=0.28.1",
 ]
 
 [project.scripts]
@@ -40,7 +41,7 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["credit_review"]
+packages = ["credit_review", "assistant"]
 
 [tool.uv]
 default-groups = ["dev"]
@@ -52,7 +53,7 @@ testpaths = ["tests"]
 addopts = "-q --strict-markers"
 
 [tool.coverage.run]
-source = ["credit_review"]
+source = ["credit_review", "assistant"]
 branch = true
 
 [tool.coverage.report]
