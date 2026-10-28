@@ -191,12 +191,13 @@ def _normalise(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-# What a model puts around a quote without changing it: quote marks, a closing full stop, an ellipsis at either end.
-_QUOTE_ENDS = re.compile(r"""^(?:[\s"'«»(\[]|\.\.\.|…)+|(?:[\s"'«».,;:)\]]|\.\.\.|…)+$""")
+# What a model puts around a quote without changing it: quote marks, brackets, a closing full stop, an ellipsis at
+# either end. Stripped as characters (str.strip), not with a pattern: linear time on any input.
+_QUOTE_ENDS = " \"'«»()[].,;:…"
 
 
 def _normalise_quote(text: str) -> str:
-    return _QUOTE_ENDS.sub("", _normalise(text))
+    return _normalise(text).strip(_QUOTE_ENDS)
 
 
 def check_output(answer: Answer, retrieved: Sequence[Chunk], canary: str) -> GuardResult:
