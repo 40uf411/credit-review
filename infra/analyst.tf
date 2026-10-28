@@ -84,6 +84,10 @@ resource "azurerm_container_app" "analyst" {
         value = azurerm_application_insights.this.connection_string
       }
       env {
+        name  = "ASSISTANT_URL" # the page's assistant view calls the assistant's API, with the same key
+        value = "https://${azurerm_container_app.assistant.ingress[0].fqdn}"
+      }
+      env {
         name        = "CREDIT_API_KEY"
         secret_name = "api-key"
       }

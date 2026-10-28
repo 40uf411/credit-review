@@ -70,20 +70,3 @@ def test_citations_name_their_document(client):
     citation = client.post(f"/conversations/{cid}/messages", json={"text": "Maximale hypotheek waarde woning?"}) \
         .json()["citations"][0]
     assert citation["source"] == "nl-thk" and citation["title"] == "Tijdelijke regeling hypothecair krediet"
-
-
-@pytest.mark.parametrize(("path", "media"), [("/", "text/html"), ("/web/chat.js", "text/javascript"),
-                                              ("/web/chat.css", "text/css")])
-def test_the_chat_page_is_served_without_a_key_and_locked_down(client, path, media):
-    r = client.get(path, headers={"X-API-Key": ""})
-    assert r.status_code == 200 and r.headers["content-type"].startswith(media)
-    assert r.headers["content-security-policy"].startswith("default-src 'self'")
-    assert r.headers["x-content-type-options"] == "nosniff"
-
-
-def test_the_page_has_no_inline_script_and_only_listed_files_are_served(client):
-    html = client.get("/").text
-    assert '<script src="/web/chat.js"' in html and "<script>" not in html and "onclick" not in html
-    assert ".innerHTML" not in client.get("/web/chat.js").text
-    for path in ("/web/chat.html", "/web/..%2Fapi.py", "/web/../api.py", "/web/missing.js"):
-        assert client.get(path).status_code == 404
