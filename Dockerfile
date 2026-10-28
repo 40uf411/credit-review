@@ -52,5 +52,5 @@ EXPOSE 8000
 # The default is the HTTP service (credit_review/api.py). The CLI is in the same image:
 #   docker run --rm -v "$PWD/case_pack:/data:ro" -e CREDIT_REVIEW_LLM_OFFLINE=1 \
 #     credit-review credit-review /data/dossier --decision-date 2026-10-12 --out /tmp/out
-CMD ["uvicorn", "credit_review.api:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", \
-     "--forwarded-allow-ips", "*", "--no-server-header"]
+# APP_MODULE picks the service: credit_review.api:app (default) or assistant.api:app; same image, same digest.
+CMD ["sh", "-c", "exec uvicorn \"${APP_MODULE:-credit_review.api:app}\" --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*' --no-server-header"]

@@ -1,18 +1,20 @@
 name: Deploy
 
-# Build the image, scan it, push it to the registry, and roll it out to Container Apps without downtime:
-# the new revision gets no traffic until it has passed a smoke test and an end-to-end run on its own label.
-# If any check fails, traffic stays on the previous revision and the new one is deactivated.
+# Build one image, scan it, push it to the registry, and roll it out to both container apps without downtime: the
+# credit-review API and the regulation assistant (the same image; APP_MODULE picks the service). Each new revision
+# gets no traffic until it has passed a smoke test and an end-to-end run on its own label. If any check fails, traffic
+# stays on the previous revision and the new one is deactivated.
 #
 # Needs repository variables AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, ACR_NAME, CONTAINER_APP,
-# APP_RESOURCE_GROUP and API_URL (printed by `terraform output github_variables` in infra/), and the secret
-# CREDIT_API_KEY in the `dev` environment.
+# APP_RESOURCE_GROUP, API_URL and (once the assistant exists) ASSISTANT_APP, all printed by
+# `terraform output github_variables` in infra/, and the secret CREDIT_API_KEY in the `dev` environment.
 
 on:
   push:
     branches: [main]
     paths:
       - "credit_review/**"
+      - "assistant/**"
       - "policy/**"
       - "config/**"
       - "Dockerfile"
@@ -29,30 +31,43 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP: ${{ vars.CONTAINER_APP }}
   RG: ${{ vars.APP_RESOURCE_GROUP }}
   ACR: ${{ vars.ACR_NAME }}
 
 jobs:
-  deploy:
-    name: Build and roll out
+  build:
+    name: Build, scan, push
     runs-on: ubuntu-latest
-    environment:
-      name: dev
-      url: ${{ vars.API_URL }}/docs
+    environment: dev
     permissions:
       contents: read
       id-token: write          # OIDC sign-in to Azure
+    outputs:
+      image: ${{ steps.push.outputs.image }}
+      apps: ${{ steps.apps.outputs.apps }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Required settings
         env:
           API_KEY: ${{ secrets.CREDIT_API_KEY }}
+          APP: ${{ vars.CONTAINER_APP }}
         run: |
           missing=""
           for v in APP RG ACR API_KEY; do [ -n "${!v}" ] || missing="$missing $v"; done
           [ -z "$missing" ] || { echo "::error::Missing:$missing (see the header of deploy.yml)"; exit 1; }
+
+      # The apps to roll out: the assistant joins once its container app exists (ASSISTANT_APP is set).
+      - name: Apps
+        id: apps
+        env:
+          API_APP: ${{ vars.CONTAINER_APP }}
+          ASSISTANT_APP: ${{ vars.ASSISTANT_APP }}
+        run: |
+          apps=$(jq -cn --arg api "$API_APP" --arg assistant "$ASSISTANT_APP" '
+            [{name: "api", app: $api, probe: "/dossiers/000000000000000000000000"}]
+            + (if $assistant == "" then [] else [{name: "assistant", app: $assistant, probe: "/conversations/x"}] end)')
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build
@@ -92,11 +107,35 @@ jobs:
           docker push "$image"
           echo "image=$image" >> "$GITHUB_OUTPUT"
 
+  rollout:
+    name: Roll out ${{ matrix.target.name }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+      url: ${{ vars.API_URL }}/docs
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false        # a failed assistant rollout must not undo the API's, and the reverse
+      matrix:
+        target: ${{ fromJSON(needs.build.outputs.apps) }}
+    env:
+      APP: ${{ matrix.target.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
       - name: Create the new revision (no traffic)
         id: revision
         env:
           API_KEY: ${{ secrets.CREDIT_API_KEY }}
-          IMAGE: ${{ steps.push.outputs.image }}
+          IMAGE: ${{ needs.build.outputs.image }}
         run: |
           az config set extension.use_dynamic_install=yes_without_prompt --only-show-errors
           # Pin traffic to what serves now, so the new revision starts with none.
@@ -123,16 +162,17 @@ jobs:
       - name: Smoke test
         env:
           URL: ${{ steps.revision.outputs.staging_url }}
-          API_KEY: ${{ secrets.CREDIT_API_KEY }}
+          PROBE: ${{ matrix.target.probe }}
         run: |
           for _ in $(seq 60); do curl -fsS "$URL/healthz" && break; sleep 5; done
           curl -fsS "$URL/readyz"
-          code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/dossiers/000000000000000000000000")
-          [ "$code" = 401 ] || { echo "::error::without a key the API answered $code, not 401"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$URL$PROBE")
+          [ "$code" = 401 ] || { echo "::error::without a key $PROBE answered $code, not 401"; exit 1; }
 
       # The sample dossier through the real service: upload, background assessment, result. The first run pays for
       # the model calls (a few cents); later ones are answered from the model cache in Blob and cost nothing.
-      - name: End-to-end run
+      - name: End-to-end run (credit review)
+        if: matrix.target.name == 'api'
         env:
           URL: ${{ steps.revision.outputs.staging_url }}
           API_KEY: ${{ secrets.CREDIT_API_KEY }}
@@ -162,6 +202,29 @@ jobs:
             echo "### End-to-end run on the new revision"
             jq -r '"Model calls: \(.summary.model_calls) (\(.summary.cached_calls) from the cache) · cost of this run: \(.summary.cost // "n/a")"' <<<"$status"
             echo; echo "| Article | Outcome |"; echo "|---|---|"; echo "$articles"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # One answered question with citations, one off-topic refusal: the index, the model, Prompt Shields, the topic
+      # guard and Table Storage all answered on the new revision.
+      - name: End-to-end run (assistant)
+        if: matrix.target.name == 'assistant'
+        env:
+          URL: ${{ steps.revision.outputs.staging_url }}
+          API_KEY: ${{ secrets.CREDIT_API_KEY }}
+        run: |
+          h=(-H "X-API-Key: $API_KEY" -H "X-User-Id: deploy-smoke" -H "Content-Type: application/json")
+          cid=$(curl -fsS "${h[@]}" -X POST "$URL/conversations" | jq -r .id)
+          ask() { curl -fsS "${h[@]}" -X POST "$URL/conversations/$cid/messages" -d "$(jq -cn --arg t "$1" '{text: $t}')"; }
+          answer=$(ask "What is the maximum loan-to-value for a mortgage in the Netherlands?")
+          refusal=$(ask "Write me a poem about the sea.")
+          jq . <<<"$answer"; jq . <<<"$refusal"
+          jq -e '.refused == false and (.citations | length > 0)' <<<"$answer" > /dev/null \
+            || { echo "::error::the in-scope question got no cited answer (is the index built? run Ingest corpus)"; exit 1; }
+          jq -e '.code == "off_topic"' <<<"$refusal" > /dev/null || { echo "::error::off-topic was not refused"; exit 1; }
+          {
+            echo "### Assistant on the new revision"
+            jq -r '"**Q:** maximum LTV in the Netherlands\n\n**A:** \(.answer)\n\nCitations: \(.citations | map(.chunk_id) | join(", "))"' <<<"$answer"
+            jq -r '"\n**Off-topic:** refused (`\(.code)`)"' <<<"$refusal"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Promote

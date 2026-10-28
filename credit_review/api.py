@@ -19,7 +19,6 @@ from the model cache. A queue and a worker job are the production answer (docs/a
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import logging
 import os
@@ -38,7 +37,6 @@ telemetry.setup()   # before FastAPI is imported, so its requests are instrument
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
-from fastapi.security import APIKeyHeader  # noqa: E402
 from opentelemetry import trace  # noqa: E402
 
 from credit_review.classify import classify_documents  # noqa: E402
@@ -46,6 +44,7 @@ from credit_review.llm import LLMClient, LLMConfig  # noqa: E402
 from credit_review.pdf import list_dossier  # noqa: E402
 from credit_review.pipeline import assess  # noqa: E402
 from credit_review.policy import Policy, load_policy  # noqa: E402
+from credit_review.security import require_key  # noqa: E402
 from credit_review.storage import Store, store_from_env  # noqa: E402
 
 log = logging.getLogger("credit_review.api")
@@ -95,17 +94,6 @@ def get_store() -> Store:
 def get_llm() -> LLMClient:
     config = LLMConfig.from_env()
     return LLMClient(config, store=store_from_env("llm-cache", config.cache_dir))
-
-
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False, description="The service's API key.")
-
-
-def require_key(key: Annotated[str | None, Depends(api_key_header)]) -> None:
-    expected = os.environ.get("CREDIT_API_KEY", "")
-    if not expected:      # fail closed: a missing setting never means "open"
-        raise HTTPException(503, "the service has no API key configured")
-    if not key or not hmac.compare_digest(key.encode(), expected.encode()):
-        raise HTTPException(401, "missing or wrong X-API-Key", headers={"WWW-Authenticate": "ApiKey"})
 
 
 StoreDep = Annotated[Store, Depends(get_store)]

@@ -127,6 +127,40 @@ The assessment runs as a background task in the service; why that is acceptable 
 production, is in `docs/adr/0002-container-apps.md`. Uploads expire after 30 days. Setup steps are in
 `infra/README.md`.
 
+## Regulation assistant
+
+A second service in the same image answers questions on mortgage-lending rules in the EU, Belgium, France and the
+Netherlands, from five public sources (`assistant/corpus/manifest.yaml`), with a citation for every statement.
+
+```
+message ─▶ limits (5 questions, 1,000 chars, rate) ─▶ Prompt Shields ─▶ topic check (mini model)
+        ─▶ rewrite into a standalone question (earlier *questions* only) ─▶ Azure AI Search (keyword + vector +
+           semantic re-ranking, filtered by country) ─▶ answer from the sources only (sources spotlighted as data,
+           a per-call canary in the prompt) ─▶ every quote checked against its retrieved chunk ─▶ Table Storage
+```
+
+| Control | Where | Fails |
+|---|---|---|
+| At most 5 questions per conversation, 1,000 characters, per-user rate limit | `assistant/guards.py` | closed, before any paid call |
+| Direct prompt attacks (jailbreak) | Prompt Shields on the message | closed: no verdict is a refusal |
+| Indirect attacks planted in sources | Prompt Shields document scan at ingestion; flagged chunks are never indexed | closed |
+| Off-topic use | one structured model call; anything but an explicit yes is a refusal | closed |
+| Instructions inside sources | sources delimited and declared data; delimiters cannot be closed from inside | — |
+| Ungrounded or invented answers | each citation must quote ≥ 20 characters verbatim from a chunk that was retrieved | answer withheld |
+| System-prompt leaks | a random canary per call; seen in the answer means withheld | answer withheld |
+| Another user's conversation | conversations are keyed by user (Table partition); a foreign id is "not found" | — |
+| Memory poisoning | only the user's own earlier questions feed the next turn, never model output | — |
+
+Refusals are fixed messages that do not say which rule matched; logs carry the guard code, never the user's text.
+Ingestion (`ingest.yml`) pins each source by sha256: a document that changes stops the run instead of silently
+changing the answers.
+
+```bash
+curl -H "X-API-Key: $KEY" -H "X-User-Id: alice" -X POST $ASSISTANT_URL/conversations          # {"id": ...}
+curl -H "X-API-Key: $KEY" -H "X-User-Id: alice" -H "Content-Type: application/json" \
+     -d '{"text": "What is the maximum loan-to-value in the Netherlands?"}' $ASSISTANT_URL/conversations/<id>/messages
+```
+
 ## Development and CI
 
 ```bash
@@ -143,6 +177,7 @@ uv run pre-commit install    # the same checks before every commit
 | `policy-impact.yml` | PRs touching `policy/`, manual | Validates the changed policy, runs the sample dossier under the policy before and after, and posts the checks whose outcome changes as one PR comment |
 | `infra.yml` | PRs and `main` touching `infra/` | `terraform fmt` and `validate`, Trivy configuration scan; the plan posted on the PR; apply on `main` (environment `dev`) |
 | `deploy.yml` | `main` (app changes), manual | Build, Trivy (fixable HIGH/CRITICAL fail), push to ACR, a new revision tested on a `staging` label (health, auth, the sample dossier end to end), then 100% of traffic; automatic rollback on failure |
+| `ingest.yml` | changes to the corpus, manual | Builds the assistant's search index: download, hash check, chunk, Prompt Shields scan, embed |
 | `eval.yml` | manual | Scores Azure OpenAI deployments on the reference set and posts a comparison (OIDC sign-in, no stored key) |
 | `codeql.yml` | push, PRs, weekly | CodeQL security analysis of the Python code |
 | `dependency-review.yml` | PRs | Blocks new dependencies with high-severity vulnerabilities or copyleft licences |
@@ -164,6 +199,7 @@ Decisions are recorded in `docs/adr/`.
 | `credit_review/extract.py` | Policy-driven extraction; code re-parses values and locates every quote |
 | `credit_review/llm.py` | Anthropic, OpenAI-compatible (LM Studio) and Azure OpenAI behind one cached interface |
 | `credit_review/prices.py`, `config/model_prices.yaml` | Cost of each model call from its token usage |
+| `assistant/` | The regulation assistant: guards, retrieval, memory, chat, ingestion, API |
 | `credit_review/api.py` | The HTTP service: upload, background assessment, status, result |
 | `credit_review/storage.py` | Local folder or Azure Blob, behind one interface (uploads, results, the model cache) |
 | `credit_review/telemetry.py` | Traces to Application Insights, signed in with the managed identity |

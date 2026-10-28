@@ -88,6 +88,18 @@ From then on:
 Terraform owns the resources and the app's settings. `deploy.yml` owns the running image, the ingress port, traffic
 between revisions and the API key; those are in `ignore_changes`, so an apply never rolls back a deployment.
 
+## 4. The assistant
+
+`terraform apply` (or merging an `infra/` PR) adds Azure AI Search (Basic), Content Safety (Prompt Shields), a
+`conversations` table and the `ca-assistant` container app. Then:
+
+- Set the new `github_variables` as repository variables: `ASSISTANT_APP`, `ASSISTANT_URL`, `SEARCH_ENDPOINT`,
+  `SHIELDS_ENDPOINT`.
+- Run **Actions → Ingest corpus** (first with *dry run* to see which documents download, then for real). Pin the
+  printed sha256 values in `assistant/corpus/manifest.yaml`.
+- Run **Actions → Deploy**: it now rolls out both apps from one image and tests the assistant with one cited answer
+  and one off-topic refusal.
+
 ## What signs in where
 
 | Who | How | Allowed to |

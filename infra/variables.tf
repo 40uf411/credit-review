@@ -106,3 +106,14 @@ variable "budget_start_date" {
   type        = string
   default     = "2026-10-01T00:00:00Z"
 }
+
+variable "embedding_deployment" {
+  description = "The embedding deployment the assistant and its ingestion use (a key of var.deployments)."
+  type        = string
+  default     = "text-embedding-3-large"
+
+  validation {
+    condition     = contains(keys(var.deployments), var.embedding_deployment)
+    error_message = "embedding_deployment must be one of the deployments in var.deployments."
+  }
+}
