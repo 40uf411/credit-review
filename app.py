@@ -7,8 +7,8 @@ findings with their evidence. Everything shown comes from credit_review.pipeline
 only arranges it.
 
 Hosted (CREDIT_REVIEW_UI_HOSTED=1, the ca-analyst Container App): the page asks for the
-service's API key first and stays closed if none is configured; dossiers come from the sample
-or an upload, never from a path on the server. Text read from documents or written by a model
+service's API key first and stays closed if none is configured. Locally and hosted, dossiers
+come from the sample or an upload, never from a typed path. Text read from documents or written by a model
 is escaped before it is shown, so a document cannot add markup, links or images to the page.
 """
 
@@ -167,15 +167,12 @@ with st.sidebar:
         st.caption(f"SHA-256 {report.sha256[:16]}…")
 
     st.subheader("Dossier")
-    sources = ["Sample dossier", "Upload PDFs"] + ([] if HOSTED else ["A folder on this computer"])
-    source = st.radio("Documents", sources)
+    # No typed folder paths, locally or hosted: a dossier is the sample or what the analyst uploads.
+    source = st.radio("Documents", ["Sample dossier", "Upload PDFs"])
     folder, dossier_note = SAMPLE, ""
     if source == "Upload PDFs":
         uploads = st.file_uploader("The borrower's documents", type="pdf", accept_multiple_files=True)
         folder, dossier_note = save_upload(uploads) if uploads else (None, "Upload the borrower's PDF documents.")
-    elif source == "A folder on this computer":
-        typed = st.text_input("Folder with the borrower's documents", "case_pack/dossier")
-        folder = (ROOT / typed) if not Path(typed).is_absolute() else Path(typed)
     st.subheader("Run")
     decision_date = st.date_input("Decision date", date.today(), format="DD/MM/YYYY")
     override_app = st.checkbox("Set the application date myself")
@@ -207,7 +204,7 @@ if policy.policy.status != "in_force":
                 f'Results are for review, not for credit decisions.</div>', unsafe_allow_html=True)
 
 if folder is None or not folder.is_dir():
-    st.info(dossier_note or "Enter the folder that holds the borrower's PDF documents in the sidebar.")
+    st.info(dossier_note or "Choose the sample dossier or upload the borrower's PDF documents in the sidebar.")
     st.stop()
 docs = load_dossier_cached(str(folder), dossier_signature(folder))
 by_name = {d.name: d for d in docs}
