@@ -181,3 +181,35 @@ def test_a_leaked_canary_is_never_repaired(tmp_path):
     chat, store = make_chat(tmp_path, model)
     reply = chat.ask(store.create("u1"), "Maximale hypotheek waarde woning?")
     assert reply.code == "canary_leak" and model.purposes().count("answer") == 1
+
+
+class RecordingRetriever(LocalRetriever):
+    def __init__(self, chunks):
+        super().__init__(chunks)
+        self.calls = []
+
+    def search(self, query, k=5, countries=()):
+        self.calls.append((k, tuple(countries)))
+        return super().search(query, k, countries)
+
+
+def test_a_comparison_searches_each_country_on_its_own(tmp_path):
+    from assistant.chat import PER_COUNTRY_K
+    retriever = RecordingRetriever(CHUNKS)
+    model = Model(rewrite={"question": "Compare the hypothecair krediet and taux d'effort rules in France and the "
+                                       "Netherlands", "countries": ["FR", "NL", "EU"]}, answer=cited())
+    llm = LLMClient(LLMConfig(provider="openai", model="mini", cache_dir=tmp_path), provider=model)
+    chat = Chat(Guards(Shields(), llm, load_topic()), retriever, llm, InMemoryStore(), canary=lambda: CANARY)
+    chat.ask(chat.store.create("u1"), "Compare France and the Netherlands")
+    assert retriever.calls == [(PER_COUNTRY_K, ("FR",)), (PER_COUNTRY_K, ("NL",))]
+    sources = next(r for r in model.requests if r.purpose == "answer").prompt
+    assert 'country="FR"' in sources and 'country="NL"' in sources       # both countries reach the model
+
+
+def test_one_country_is_one_search(tmp_path):
+    retriever = RecordingRetriever(CHUNKS)
+    model = Model(rewrite={"question": "Maximale hypotheek waarde woning?", "countries": ["NL"]}, answer=cited())
+    llm = LLMClient(LLMConfig(provider="openai", model="mini", cache_dir=tmp_path), provider=model)
+    chat = Chat(Guards(Shields(), llm, load_topic()), retriever, llm, InMemoryStore(), canary=lambda: CANARY)
+    chat.ask(chat.store.create("u1"), "Maximale hypotheek waarde woning?")
+    assert retriever.calls == [(5, ("NL",))]
