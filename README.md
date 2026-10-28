@@ -151,7 +151,8 @@ question or an answer.
 - *Model usage:* one `llm <purpose>` span per model call: model, input and output tokens, the input tokens served
   from Azure's prompt cache, cost, and whether our response cache answered it.
 - *The assistant:* one `chat turn` span per question, with its outcome (`ok` or the refusal code) and, for a
-  withheld answer, which citation check failed on which chunk.
+  withheld or repaired answer, which citation check failed on which chunk (`assistant.repaired` says whether
+  the one repair round fixed it).
 - *Azure's side:* Foundry and Prompt Shields request logs (status codes, 429s, latency) in Log Analytics.
 
 The workbook **Credit review: traffic and models** (Application Insights → Workbooks) puts these on one page.
@@ -195,7 +196,7 @@ message ─▶ limits (5 questions, 1,000 chars, rate) ─▶ Prompt Shields ─
 | Indirect attacks planted in sources | Prompt Shields document scan at ingestion; flagged chunks are never indexed | closed |
 | Off-topic use | one structured model call; anything but an explicit yes is a refusal | closed |
 | Instructions inside sources | sources delimited and declared data; delimiters cannot be closed from inside | — |
-| Ungrounded or invented answers | each citation must quote ≥ 20 characters verbatim from a chunk that was retrieved | answer withheld |
+| Ungrounded or invented answers | each citation must quote ≥ 20 characters verbatim from a chunk that was retrieved; on a miss the model is shown its failing quotes once and asked to copy them exactly or drop the claim, and the guard checks the new answer from scratch | answer withheld |
 | System-prompt leaks | a random canary per call; seen in the answer means withheld | answer withheld |
 | Another user's conversation | conversations are keyed by user (Table partition); a foreign id is "not found" | — |
 | Memory poisoning | only the user's own earlier questions feed the next turn, never model output | — |

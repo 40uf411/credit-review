@@ -209,6 +209,24 @@ def test_the_log_says_which_check_a_citation_failed(citation, detail):
     assert result.detail == detail and result.message == MESSAGES["bad_citation"]     # the user sees no detail
 
 
+@pytest.mark.parametrize("quote", [
+    '"may not exceed 100% of the market value."',            # wrapped in quote marks, with a closing full stop
+    "…may not exceed 100 % of the market value…",            # an ellipsis at both ends, a space before %
+    "may not exceed 100% of the market value.",
+])
+def test_harmless_decoration_around_a_quote_is_ignored(quote):
+    assert check_output(answer(("nl-3", quote)), CHUNKS, CANARY).allowed
+
+
+def test_every_failing_citation_is_reported():
+    result = check_output(answer(("nl-3", "must not be higher than the value of the home"),
+                                 ("eu-18", "may not exceed 100% of the market value"),
+                                 ("nl-9", "made up but long enough to count")), CHUNKS, CANARY)
+    assert result.detail == "not_verbatim, chunk nl-3; not_verbatim, chunk eu-18; unknown_chunk"
+    assert [(cid, reason) for cid, reason, _ in result.failures] == \
+        [("nl-3", "not_verbatim"), ("eu-18", "not_verbatim"), ("nl-9", "unknown_chunk")]
+
+
 def test_one_bad_citation_withholds_the_whole_answer():
     good, bad = ("nl-3", "may not exceed 100% of the market value"), ("nl-9", "made up but long enough to count")
     assert check_output(answer(good, bad), CHUNKS, CANARY).code == "bad_citation"

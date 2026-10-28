@@ -62,11 +62,13 @@ locals {
       visualization = "piechart"
     },
     {
-      title         = "Withheld answers: which check failed, on which chunk"
+      title         = "Citation failures: which check, which chunk, and whether the repair round fixed it"
       query         = <<-KQL
         dependencies
         | where name == "chat turn" and isnotempty(customDimensions["assistant.withheld"])
         | project timestamp, detail = tostring(customDimensions["assistant.withheld"]),
+                  repaired = tostring(customDimensions["assistant.repaired"]),
+                  outcome = tostring(customDimensions["assistant.code"]),
                   prompt = tostring(customDimensions["assistant.prompt_version"])
         | order by timestamp desc
         | take 50
