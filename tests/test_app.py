@@ -34,14 +34,13 @@ def test_hosted_the_page_opens_only_with_the_key(page):
     at.text_input[0].input("wrong").run()
     assert "not accepted" in at.error[0].value and not at.sidebar.radio
     at.text_input[0].input("right").run()
-    sources = at.sidebar.radio[0].options
-    assert sources == ["Sample dossier", "Upload PDFs"]          # no server path can be typed when hosted
+    assert at.sidebar.radio[0].options == ["Sample dossier", "Upload PDFs"]
 
 
 def test_locally_the_sample_dossier_loads_without_a_model(page):
     at = page()
     assert not at.exception
-    assert "A folder on this computer" in at.sidebar.radio[0].options
+    assert at.sidebar.radio[0].options == ["Sample dossier", "Upload PDFs"]     # never a typed server path
     assert any(h.value == "1. Documents" for h in at.header)
 
 
