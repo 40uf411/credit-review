@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Regulation assistant</title>
+  <link rel="stylesheet" href="/web/chat.css">
+  <script src="/web/chat.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Regulation assistant</h1>
+      <p class="sub">Mortgage-lending rules in the EU, Belgium, France and the Netherlands, answered from the sources with verbatim quotes.</p>
+    </div>
+    <div class="top-actions">
+      <span id="remaining" class="badge" hidden></span>
+      <button id="new" type="button" class="ghost" hidden>New conversation</button>
+      <button id="forget" type="button" class="ghost" hidden>Forget key</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="unlock" class="card" hidden>
+      <h2>API key</h2>
+      <p>Paste the key the service was deployed with. It stays in this tab only and is sent as the <code>X-API-Key</code> header.</p>
+      <form id="key-form">
+        <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="API key" required>
+        <button type="submit">Start</button>
+      </form>
+      <p id="key-error" class="error" hidden></p>
+    </section>
+
+    <section id="chat" hidden>
+      <ol id="log" class="log" aria-live="polite"></ol>
+
+      <div id="examples" class="examples">
+        <span class="label">Try</span>
+        <button type="button" class="chip">What is the maximum loan-to-value for a mortgage in the Netherlands?</button>
+        <button type="button" class="chip">Quel est le taux d'effort maximal pour un crédit immobilier en France ?</button>
+        <button type="button" class="chip">How do Belgium and the Netherlands limit loan-to-value?</button>
+        <button type="button" class="chip">Write me a poem about the sea.</button>
+      </div>
+
+      <form id="ask-form" class="composer">
+        <textarea id="question" rows="2" placeholder="Ask about a mortgage-lending rule…" required></textarea>
+        <div class="composer-row">
+          <span id="count" class="count">0 / 1000</span>
+          <button id="send" type="submit">Ask</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <footer class="foot">
+    Five questions per conversation. Every message passes Prompt Shields and a topic check; every answer must quote the
+    retrieved sources word for word, or it is withheld.
+  </footer>
+</body>
+</html>

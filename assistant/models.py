@@ -15,6 +15,11 @@ class Chunk:
     language: str         # en | fr | nl
 
 
+def source_of(chunk_id: str) -> str:
+    """The document a chunk comes from: chunk ids are `<document id>-<number>`."""
+    return chunk_id.rsplit("-", 1)[0]
+
+
 @dataclass(frozen=True)
 class Citation:
     chunk_id: str

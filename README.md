@@ -155,6 +155,10 @@ Refusals are fixed messages that do not say which rule matched; logs carry the g
 Ingestion (`ingest.yml`) pins each source by sha256: a document that changes stops the run instead of silently
 changing the answers.
 
+**Chat page:** open `$ASSISTANT_URL/` and paste the API key; it stays in that browser tab (sessionStorage) and goes
+out only as the `X-API-Key` header. The page loads nothing from other sites, and renders every answer and quote as
+plain text, so text inside a source or an answer cannot run as markup or script in the browser. Or call the API:
+
 ```bash
 curl -H "X-API-Key: $KEY" -H "X-User-Id: alice" -X POST $ASSISTANT_URL/conversations          # {"id": ...}
 curl -H "X-API-Key: $KEY" -H "X-User-Id: alice" -H "Content-Type: application/json" \

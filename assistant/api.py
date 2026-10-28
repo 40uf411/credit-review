@@ -3,6 +3,7 @@
     POST /conversations                      start one (header X-User-Id) → {id, remaining_messages}
     POST /conversations/{id}/messages        ask → {answer, citations, refused, code, remaining_messages}
     GET  /conversations/{id}                 the turns so far
+    GET  /                                   a chat page over the routes above (the key is pasted in the page)
     GET  /healthz, /readyz
 
     APP_MODULE=assistant.api:app uvicorn ...      (the same image as the credit-review API)
@@ -15,6 +16,7 @@ Entra ID token instead (docs/adr).
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Any
 
 from credit_review import telemetry
@@ -22,13 +24,15 @@ from credit_review import telemetry
 telemetry.setup("assistant")
 
 from fastapi import Depends, FastAPI, Header, HTTPException  # noqa: E402
-from fastapi.responses import JSONResponse  # noqa: E402
+from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 from assistant.chat import Chat  # noqa: E402
 from assistant.config import Settings, load_topic  # noqa: E402
 from assistant.guards import MAX_CHARS, Guards, RateLimiter  # noqa: E402
+from assistant.ingest import load_manifest  # noqa: E402
 from assistant.memory import ConversationStore, InvalidUser, TableStore  # noqa: E402
+from assistant.models import source_of  # noqa: E402
 from assistant.retriever import AzureEmbedder, AzureSearchRetriever  # noqa: E402
 from assistant.shields import PromptShields  # noqa: E402
 from credit_review.llm import LLMClient, LLMConfig  # noqa: E402
@@ -56,6 +60,11 @@ def get_chat() -> Chat:
     retriever = AzureSearchRetriever(settings.search_endpoint, settings.search_index,
                                      AzureEmbedder(settings.openai_endpoint, settings.embedding_deployment))
     return Chat(guards, retriever, llm, get_store())
+
+
+@lru_cache(maxsize=1)
+def titles() -> dict[str, str]:
+    return {d.id: d.title for d in load_manifest()}
 
 
 UserId = Annotated[str, Header(alias="X-User-Id", description="The end user the conversation belongs to.")]
@@ -88,7 +97,8 @@ def ask(conversation_id: str, message: Message, user_id: UserId,
         chat: Annotated[Chat, Depends(get_chat)]) -> dict[str, Any]:
     reply = chat.ask(_conversation(store, conversation_id, user_id), message.text)
     return {"answer": reply.text, "refused": reply.refused, "code": reply.code,
-            "citations": [{"chunk_id": c.chunk_id, "quote": c.quote} for c in reply.citations],
+            "citations": [{"chunk_id": c.chunk_id, "quote": c.quote, "source": source_of(c.chunk_id),
+                           "title": titles().get(source_of(c.chunk_id), "")} for c in reply.citations],
             "remaining_messages": reply.remaining_messages}
 
 
@@ -99,6 +109,31 @@ def get_conversation(conversation_id: str, user_id: UserId,
     conversation = _conversation(store, conversation_id, user_id)
     return {"id": conversation.id, "turns": [{"role": t.role, "text": t.text} for t in conversation.turns],
             "remaining_messages": chat.remaining(conversation)}
+
+
+# ------------------------------------------------------------------ the chat page
+
+WEB = Path(__file__).with_name("web")
+# Scripts and styles from this app only, nothing inline: text an answer or a source carries cannot run as code here.
+PAGE_HEADERS = {
+    "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "no-cache",
+}
+PAGE_FILES = {"chat.js": "text/javascript", "chat.css": "text/css"}
+
+
+@app.get("/", include_in_schema=False)
+def page() -> FileResponse:
+    return FileResponse(WEB / "chat.html", media_type="text/html", headers=PAGE_HEADERS)
+
+
+@app.get("/web/{name}", include_in_schema=False)
+def page_file(name: str) -> FileResponse:
+    if name not in PAGE_FILES:
+        raise HTTPException(404, "not found")
+    return FileResponse(WEB / name, media_type=PAGE_FILES[name], headers=PAGE_HEADERS)
 
 
 @app.get("/healthz", include_in_schema=False)
