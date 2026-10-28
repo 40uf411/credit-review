@@ -25,6 +25,10 @@ dependencies = [
 [project.scripts]
 credit-review = "credit_review.pipeline:main"
 
+[project.optional-dependencies]
+# The analyst page (app.py): `uv sync --extra ui`, then `uv run streamlit run app.py`. The image installs it too.
+ui = ["streamlit>=1.50", "pandas>=2.2"]
+
 [dependency-groups]
 test = [
     "httpx>=0.28.1",
@@ -90,7 +94,7 @@ combine-as-imports = true
 "tests/**" = ["S101", "S105", "S106"]   # assert is how pytest works; fake credentials in tests
 
 [tool.pyright]
-include = ["credit_review", "tests"]
+include = ["credit_review", "tests", "app.py"]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
 venvPath = "."
