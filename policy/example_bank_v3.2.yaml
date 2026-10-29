@@ -96,7 +96,7 @@ parameters:
   epc_energy_score_threshold:   {value: 400,  unit: kWh/m²·year, owner: example_bank, source: "5.3", description: "Above this score the works must include an eligible energy measure."}
   eligible_energy_measures:     {value: [insulation, heating, glazing, ventilation, solar], unit: list, owner: example_bank, source: "5.3", description: "The bank's eligible-measures list."}
   min_own_funds_amount:         {value: 1000, unit: EUR,    owner: example_bank, source: "5.4", description: "Minimum own funds in absolute terms."}
-  min_own_funds_share:          {value: 0.02, unit: ratio,  owner: example_bank, source: "5.4", description: "Minimum own funds as a share of the total investment."}
+  min_own_funds_share:          {value: 0.10, unit: ratio,  owner: example_bank, source: "5.4", description: "Minimum own funds as a share of the total investment."}
 
   # --- implementation parameters (not in the policy; to confirm) -------------
   income_change_signal:         {value: 0.20, unit: ratio,  owner: example_systems, source: implementation, description: "Month-to-month gross pay change flagged as an income-trend signal for 7.1."}
@@ -1402,11 +1402,11 @@ sections:
 
       - id: "5.4"
         source: >-
-          The applicant contributes own funds of at least €1,000 or 2% of the total investment,
+          The applicant contributes own funds of at least €1,000 or 10% of the total investment,
           whichever is higher.
         checks:
           - id: "5.4.a"
-            description: Own funds are at least the higher of €1,000 and 2% of the total investment.
+            description: Own funds are at least the higher of €1,000 and 10% of the total investment.
             kind: deterministic
             op: at_least
             field: own_funds.declared
