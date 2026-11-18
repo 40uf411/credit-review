@@ -52,7 +52,7 @@ This policy applies to mortgage and renovation credits granted to natural person
    c. where the EPC score exceeds **400 kWh/m²·year**, the planned works must include at least one energy-improving measure from the bank's eligible-measures list (insulation, heating installation, glazing, ventilation, solar);
    d. the requested amount must be plausible in relation to the described works.
 
-5.4. The applicant contributes **own funds of at least €1,000** or 2% of the total investment, whichever is higher.
+5.4. The applicant contributes **own funds of at least €1,000** or 10% of the total investment, whichever is higher.
 
 ## 6. Documentation
 
